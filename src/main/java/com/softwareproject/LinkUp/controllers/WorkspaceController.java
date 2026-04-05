@@ -1,5 +1,6 @@
 package com.softwareproject.LinkUp.controllers;
 
+import com.softwareproject.LinkUp.dtos.AddingMemberDTO;
 import com.softwareproject.LinkUp.dtos.WorkspaceDTO;
 import com.softwareproject.LinkUp.entities.User;
 import com.softwareproject.LinkUp.services.WorkspaceService;
@@ -23,6 +24,11 @@ public class WorkspaceController {
         workspaceService.createWorkSpace(user,workspaceDTO);
         return ResponseEntity.ok("Workspace created Successfully");
 
+    }
+    @PostMapping("/adduser")
+    public ResponseEntity<String> inviteMember(@RequestBody AddingMemberDTO addingMemberDTO){
+        workspaceService.inviteMember(addingMemberDTO,(User) SecurityContextHolder.getContext().getAuthentication().getPrincipal());
+        return ResponseEntity.ok("User with the email : " + addingMemberDTO.getUserEmail() + " added succsefully!");
     }
 
 }

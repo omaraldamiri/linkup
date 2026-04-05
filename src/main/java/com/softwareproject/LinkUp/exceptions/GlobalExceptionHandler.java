@@ -26,4 +26,16 @@ public class GlobalExceptionHandler {
     public ResponseEntity<String> handleWorkspaceNameException(WorkspaceNameExistsException e){
         return ResponseEntity.status(400).body(e.getMessage());
     }
+    @ExceptionHandler(UserNotFoundException.class)
+    public ResponseEntity<String> handleUserNotFoundException(UserNotFoundException e){
+        return ResponseEntity.status(400).body(e.getMessage());
+    }
+    @ExceptionHandler(UnAuthorizedException.class)
+    public ResponseEntity<String> handleUnAuthorizedException(UnAuthorizedException e){
+        return ResponseEntity.status(401).body(e.getMessage());
+    }
+    @ExceptionHandler(UserAlreadyExistsInWorkspace.class)
+    public ResponseEntity<String> handleUserAlreadyExistsInWorkspaceException(UserAlreadyExistsInWorkspace e){
+        return ResponseEntity.status(400).body(e.getMessage());
+    }
 }
