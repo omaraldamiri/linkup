@@ -1,16 +1,14 @@
 package com.softwareproject.LinkUp.controllers;
 
 import com.softwareproject.LinkUp.dtos.AddingMemberDTO;
+import com.softwareproject.LinkUp.dtos.RemovingMemberDTO;
 import com.softwareproject.LinkUp.dtos.WorkspaceDTO;
 import com.softwareproject.LinkUp.entities.User;
 import com.softwareproject.LinkUp.services.WorkspaceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequiredArgsConstructor
@@ -27,8 +25,16 @@ public class WorkspaceController {
     }
     @PostMapping("/adduser")
     public ResponseEntity<String> inviteMember(@RequestBody AddingMemberDTO addingMemberDTO){
-        workspaceService.inviteMember(addingMemberDTO,(User) SecurityContextHolder.getContext().getAuthentication().getPrincipal());
+        workspaceService.inviteMember(addingMemberDTO,
+                (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal());
         return ResponseEntity.ok("User with the email : " + addingMemberDTO.getUserEmail() + " added succsefully!");
     }
+
+        @DeleteMapping("/removeuser")
+        public ResponseEntity<String> removeMember(@RequestBody RemovingMemberDTO removingMemberDTO){
+            workspaceService.removeMember(removingMemberDTO,
+                            (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal());
+            return ResponseEntity.ok("User removed successfully!");
+        }
 
 }

@@ -1,6 +1,7 @@
 package com.softwareproject.LinkUp.services;
 
 import com.softwareproject.LinkUp.dtos.AddingMemberDTO;
+import com.softwareproject.LinkUp.dtos.RemovingMemberDTO;
 import com.softwareproject.LinkUp.dtos.WorkspaceDTO;
 import com.softwareproject.LinkUp.entities.User;
 import com.softwareproject.LinkUp.entities.Workspace;
@@ -64,9 +65,32 @@ public class WorkspaceService {
         WorkspaceMember tempWorkspaceMember=WorkspaceMember.builder()
                 .user(user)
                 .workspace(workspace)
-                .role(addingMemberDTO.getWorkspaceRole())
+                .role(addingMemberDTO.getWorkSpaceRole())
                 .build();
         workspaceMemberRepository.save(tempWorkspaceMember);
+    }
+
+    public void removeMember(RemovingMemberDTO removingMemberDTO,User currentUser){
+        Workspace workspace=workspaceRepository.findById(removingMemberDTO.getWorkSpaceId()).
+                orElseThrow(()-> new RuntimeException("Error happened receiving workspace id (removing User)"));
+        WorkspaceMember currentworkspaceMember=workspaceMemberRepository.findByUserAndWorkspace(currentUser,workspace).orElseThrow(
+                ()-> new RuntimeException("Error happened in (removing User)")
+        );
+        if(currentworkspaceMember.getRole()!=WorkspaceRole.OWNER)
+            throw new UnAuthorizedException("You don't have the right permission");
+
+        User user=userRepository.findById(removingMemberDTO.getUserId()).orElseThrow(
+                ()-> new RuntimeException("User not found (removing User)")
+        );
+        WorkspaceMember removedWorkSpaceMember=workspaceMemberRepository.findByUserAndWorkspace(user,workspace).orElseThrow(
+                ()->new RuntimeException("User doesn't belong to this workspace")
+        );
+
+        if(removedWorkSpaceMember.getRole()==WorkspaceRole.OWNER)
+            throw new UnAuthorizedException("You can't remove a user that has owner role");
+
+        workspaceMemberRepository.delete(removedWorkSpaceMember);
+
     }
 
 
