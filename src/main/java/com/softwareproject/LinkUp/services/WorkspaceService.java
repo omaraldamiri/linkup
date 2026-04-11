@@ -25,9 +25,6 @@ public class WorkspaceService {
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
     private final UserRepository userRepository;
-    public List<Workspace> returnAllWorkspaces(){
-        return workspaceRepository.findAll();
-    }
 
 
 

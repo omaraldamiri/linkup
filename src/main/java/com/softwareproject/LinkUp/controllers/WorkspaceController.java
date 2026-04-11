@@ -37,7 +37,7 @@ public class WorkspaceController {
                             (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal());
             return ResponseEntity.ok("User removed successfully!");
         }
-
+        @PatchMapping("/editrole")
         public ResponseEntity<String> editMemberRole(@RequestBody EditingRoleDTO editingRoleDTO){
 
             workspaceService.editingMemberRole(editingRoleDTO,

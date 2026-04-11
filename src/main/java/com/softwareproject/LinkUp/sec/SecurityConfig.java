@@ -22,7 +22,7 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**").permitAll() // public endpoints like login/register
+                        .requestMatchers("/auth/**","/swagger-ui/**", "/v3/api-docs/**").permitAll() // public endpoints like login/register
                         .anyRequest().authenticated()           // everything else needs auth
                 )
                 .sessionManagement(session -> session
