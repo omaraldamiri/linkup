@@ -38,4 +38,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<String> handleUserAlreadyExistsInWorkspaceException(UserAlreadyExistsInWorkspace e){
         return ResponseEntity.status(400).body(e.getMessage());
     }
+    @ExceptionHandler(UserAlreadyHasRoleException.class)
+    public ResponseEntity<String> handleUserAlreadyHasRoleException(UserAlreadyHasRoleException e){
+        return ResponseEntity.status(400).body(e.getMessage());
+    }
 }

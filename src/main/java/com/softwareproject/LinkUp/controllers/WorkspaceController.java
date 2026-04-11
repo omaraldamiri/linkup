@@ -1,6 +1,7 @@
 package com.softwareproject.LinkUp.controllers;
 
 import com.softwareproject.LinkUp.dtos.AddingMemberDTO;
+import com.softwareproject.LinkUp.dtos.EditingRoleDTO;
 import com.softwareproject.LinkUp.dtos.RemovingMemberDTO;
 import com.softwareproject.LinkUp.dtos.WorkspaceDTO;
 import com.softwareproject.LinkUp.entities.User;
@@ -35,6 +36,13 @@ public class WorkspaceController {
             workspaceService.removeMember(removingMemberDTO,
                             (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal());
             return ResponseEntity.ok("User removed successfully!");
+        }
+
+        public ResponseEntity<String> editMemberRole(@RequestBody EditingRoleDTO editingRoleDTO){
+
+            workspaceService.editingMemberRole(editingRoleDTO,
+                    (User)SecurityContextHolder.getContext().getAuthentication().getPrincipal());
+            return ResponseEntity.ok("Role edited successfully");
         }
 
 }

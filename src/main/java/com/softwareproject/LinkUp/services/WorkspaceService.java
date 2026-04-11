@@ -1,16 +1,14 @@
 package com.softwareproject.LinkUp.services;
 
 import com.softwareproject.LinkUp.dtos.AddingMemberDTO;
+import com.softwareproject.LinkUp.dtos.EditingRoleDTO;
 import com.softwareproject.LinkUp.dtos.RemovingMemberDTO;
 import com.softwareproject.LinkUp.dtos.WorkspaceDTO;
 import com.softwareproject.LinkUp.entities.User;
 import com.softwareproject.LinkUp.entities.Workspace;
 import com.softwareproject.LinkUp.entities.WorkspaceMember;
 import com.softwareproject.LinkUp.enums.WorkspaceRole;
-import com.softwareproject.LinkUp.exceptions.SlugAlreadyExistsException;
-import com.softwareproject.LinkUp.exceptions.UnAuthorizedException;
-import com.softwareproject.LinkUp.exceptions.UserAlreadyExistsInWorkspace;
-import com.softwareproject.LinkUp.exceptions.WorkspaceNameExistsException;
+import com.softwareproject.LinkUp.exceptions.*;
 import com.softwareproject.LinkUp.repos.UserRepository;
 import com.softwareproject.LinkUp.repos.WorkspaceMemberRepository;
 import com.softwareproject.LinkUp.repos.WorkspaceRepository;
@@ -19,6 +17,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -90,6 +89,48 @@ public class WorkspaceService {
             throw new UnAuthorizedException("You can't remove a user that has owner role");
 
         workspaceMemberRepository.delete(removedWorkSpaceMember);
+
+
+
+    }
+
+    public void editingMemberRole(EditingRoleDTO editingRoleDTO,User currentUser){
+        Workspace workspace=workspaceRepository.findById(editingRoleDTO.getWorkSpaceId()).
+                orElseThrow(()-> new RuntimeException("Error happened receiving workspace id (removing User)"));
+        WorkspaceMember currentworkspaceMember=workspaceMemberRepository.findByUserAndWorkspace(currentUser,workspace).orElseThrow(
+                ()-> new RuntimeException("Error happened in (removing User)")
+        );
+        if(currentworkspaceMember.getRole()!= WorkspaceRole.OWNER)
+            throw new UnAuthorizedException("You don't have the right permission");
+
+        User user=userRepository.findById(editingRoleDTO.getUserId()).orElseThrow(
+                ()-> new RuntimeException("User not found (editing User Role)")
+        );
+        WorkspaceMember editedWorkSpaceMember=workspaceMemberRepository.findByUserAndWorkspace(user,workspace).orElseThrow(
+                ()->new RuntimeException("User doesn't belong to this workspace")
+        );
+
+        if(editedWorkSpaceMember.getRole()==editingRoleDTO.getNewRole())
+            throw new UserAlreadyHasRoleException("User already has this role!");
+
+        editedWorkSpaceMember.setRole(editingRoleDTO.getNewRole());
+        workspaceMemberRepository.save(editedWorkSpaceMember);
+
+
+    }
+
+    public List<WorkspaceDTO> getWorkspacesDTO(List<Workspace> list){
+
+        return
+                list.stream()
+                        .map(w->WorkspaceDTO
+                                .builder()
+                                .id(w.getId())
+                                .name(w.getName())
+                                .slug(w.getSlug())
+                                .imageUrl(w.getImageUrl())
+                                .description(w.getDescription()).build())
+                        .collect(Collectors.toList());
 
     }
 
