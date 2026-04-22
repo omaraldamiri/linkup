@@ -1,7 +1,12 @@
 package com.softwareproject.LinkUp.sec;
 
+import com.softwareproject.LinkUp.dtos.AuthResponse;
+import com.softwareproject.LinkUp.dtos.UserDTO;
+import com.softwareproject.LinkUp.dtos.WorkspaceDTO;
 import com.softwareproject.LinkUp.entities.User;
 import com.softwareproject.LinkUp.repos.UserRepository;
+import com.softwareproject.LinkUp.repos.WorkspaceRepository;
+import com.softwareproject.LinkUp.services.WorkspaceService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -9,9 +14,11 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
-import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Component
@@ -20,7 +27,9 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
 
     private final UserRepository userRepository;
     private final JwtService jwtService;
-
+    private final WorkspaceService workspaceService;
+    private final WorkspaceRepository workspaceRepository;
+    private final ObjectMapper objectMapper;
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request,
                                         HttpServletResponse response,
@@ -46,10 +55,22 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
             return userRepository.save(newUser);
         });
 
-        String token = jwtService.generateToken(new HashMap<>(), user);
 
-//        response.sendRedirect("http://localhost:3000/oauth2/callback?token=" + token);
+
+        List<WorkspaceDTO> workspaceDTOList=workspaceService.getWorkspacesDTO(workspaceRepository.findByUser(user));
+        UserDTO userDTO=UserDTO.builder()
+                .id(user.getId())
+                .image(user.getImage())
+                .name(user.getName())
+                .email(user.getEmail())
+                .createdAt(user.getCreatedAt())
+                .build();
+
+        AuthResponse authResponse=AuthResponse.builder().userDTO(userDTO)
+                .workspaceDTOList(workspaceDTOList).token(jwtService.generateToken(Map.of(), user))
+                .build();
+
+
         response.setContentType("application/json");
-        response.getWriter().write("{\"token\":\"" + token + "\"}");
-    }
+        response.getWriter().write(objectMapper.writeValueAsString(authResponse));    }
 }

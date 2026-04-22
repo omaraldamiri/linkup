@@ -1,15 +1,16 @@
 package com.softwareproject.LinkUp.controllers;
 
-import com.softwareproject.LinkUp.dtos.AddingMemberDTO;
-import com.softwareproject.LinkUp.dtos.EditingRoleDTO;
-import com.softwareproject.LinkUp.dtos.RemovingMemberDTO;
-import com.softwareproject.LinkUp.dtos.WorkspaceDTO;
+import com.softwareproject.LinkUp.dtos.*;
 import com.softwareproject.LinkUp.entities.User;
+import com.softwareproject.LinkUp.entities.Workspace;
+import com.softwareproject.LinkUp.entities.WorkspaceMember;
 import com.softwareproject.LinkUp.services.WorkspaceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequiredArgsConstructor
@@ -31,9 +32,9 @@ public class WorkspaceController {
         return ResponseEntity.ok("User with the email : " + addingMemberDTO.getUserEmail() + " added succsefully!");
     }
 
-        @DeleteMapping("/removeuser")
-        public ResponseEntity<String> removeMember(@RequestBody RemovingMemberDTO removingMemberDTO){
-            workspaceService.removeMember(removingMemberDTO,
+        @DeleteMapping("/removeuser/{workspaceId}/{userId}")
+        public ResponseEntity<String> removeMember(@PathVariable String workspaceId , @PathVariable String userId){
+            workspaceService.removeMember(workspaceId,userId,
                             (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal());
             return ResponseEntity.ok("User removed successfully!");
         }
@@ -44,5 +45,18 @@ public class WorkspaceController {
                     (User)SecurityContextHolder.getContext().getAuthentication().getPrincipal());
             return ResponseEntity.ok("Role edited successfully");
         }
+
+        @GetMapping("/getmembers/{workspaceId}")
+        public ResponseEntity<List<UserRoleDTO>> getWorkspaceMembers(@PathVariable String workspaceId){
+        return ResponseEntity.ok(workspaceService.returnWorkspaceMember(workspaceId));
+        }
+        @DeleteMapping("/delete/{workspaceId}")
+        public ResponseEntity<String> deleteWorkspace(@PathVariable String workspaceId){
+           return ResponseEntity.ok(workspaceService.deleteWorkspace(workspaceId,
+                    (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal()));
+        }
+
+
+
 
 }

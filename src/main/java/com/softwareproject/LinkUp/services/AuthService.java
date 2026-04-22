@@ -57,9 +57,7 @@ public class AuthService {
         authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(loginDTO.getEmail(), loginDTO.getPassword()));
                 User user=userRepository.findByEmail(loginDTO.getEmail()).orElseThrow(()->new RuntimeException("User Not Found"));
 
-                List<Workspace> workspaceList=workspaceRepository.findByUser(user).orElseThrow(
-                        ()->new RuntimeException("Error happened")
-                );
+                List<Workspace> workspaceList=workspaceRepository.findByUser(user);
 
                 List<WorkspaceDTO> workspaceDTOList=workspaceService.getWorkspacesDTO(workspaceList);
 

@@ -13,5 +13,5 @@ public interface WorkspaceRepository extends JpaRepository<Workspace,String> {
     Optional<Workspace> findBySlug(String slug);
     Optional<Workspace> findByName(String name);
     @Query("SELECT w FROM Workspace w JOIN w.workspaceMemberList wm WHERE wm.user = :user")
-    Optional<List<Workspace>> findByUser(@Param("user")User user);
+    List<Workspace> findByUser(@Param("user")User user);
 }

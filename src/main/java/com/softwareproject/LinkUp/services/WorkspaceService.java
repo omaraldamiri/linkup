@@ -1,9 +1,6 @@
 package com.softwareproject.LinkUp.services;
 
-import com.softwareproject.LinkUp.dtos.AddingMemberDTO;
-import com.softwareproject.LinkUp.dtos.EditingRoleDTO;
-import com.softwareproject.LinkUp.dtos.RemovingMemberDTO;
-import com.softwareproject.LinkUp.dtos.WorkspaceDTO;
+import com.softwareproject.LinkUp.dtos.*;
 import com.softwareproject.LinkUp.entities.User;
 import com.softwareproject.LinkUp.entities.Workspace;
 import com.softwareproject.LinkUp.entities.WorkspaceMember;
@@ -13,6 +10,8 @@ import com.softwareproject.LinkUp.repos.UserRepository;
 import com.softwareproject.LinkUp.repos.WorkspaceMemberRepository;
 import com.softwareproject.LinkUp.repos.WorkspaceRepository;
 import lombok.RequiredArgsConstructor;
+import org.jspecify.annotations.Nullable;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
@@ -66,8 +65,8 @@ public class WorkspaceService {
         workspaceMemberRepository.save(tempWorkspaceMember);
     }
 
-    public void removeMember(RemovingMemberDTO removingMemberDTO,User currentUser){
-        Workspace workspace=workspaceRepository.findById(removingMemberDTO.getWorkSpaceId()).
+    public void removeMember(String workspaceId , String userId,User currentUser){
+        Workspace workspace=workspaceRepository.findById(workspaceId).
                 orElseThrow(()-> new RuntimeException("Error happened receiving workspace id (removing User)"));
         WorkspaceMember currentworkspaceMember=workspaceMemberRepository.findByUserAndWorkspace(currentUser,workspace).orElseThrow(
                 ()-> new RuntimeException("Error happened in (removing User)")
@@ -75,7 +74,7 @@ public class WorkspaceService {
         if(currentworkspaceMember.getRole()!=WorkspaceRole.OWNER)
             throw new UnAuthorizedException("You don't have the right permission");
 
-        User user=userRepository.findById(removingMemberDTO.getUserId()).orElseThrow(
+        User user=userRepository.findById(userId).orElseThrow(
                 ()-> new RuntimeException("User not found (removing User)")
         );
         WorkspaceMember removedWorkSpaceMember=workspaceMemberRepository.findByUserAndWorkspace(user,workspace).orElseThrow(
@@ -118,6 +117,8 @@ public class WorkspaceService {
 
     public List<WorkspaceDTO> getWorkspacesDTO(List<Workspace> list){
 
+
+
         return
                 list.stream()
                         .map(w->WorkspaceDTO
@@ -132,6 +133,37 @@ public class WorkspaceService {
     }
 
 
+    public List<UserRoleDTO> returnWorkspaceMember(String id){
+            List<WorkspaceMember> workspaceMemberList=workspaceMemberRepository.findByWorkspace(workspaceRepository.findById(id).orElseThrow(()->
+                    new RuntimeException("workspace id not found")));
 
 
+
+          return workspaceMemberList.stream()
+                    .map(w-> UserRoleDTO.builder()
+                            .userDTO(UserDTO.builder()
+                                    .name(w.getUser().getName())
+                                    .email(w.getUser().getEmail())
+                                    .id(w.getUser().getId())
+                                    .image(w.getUser().getImage())
+                                    .build())
+                            .role(w.getRole()).build())
+                  .toList();
+    }
+
+
+    public String deleteWorkspace(String workspaceId , User user) {
+            Workspace workspace=workspaceRepository.findById(workspaceId).orElseThrow(
+                    () -> new RuntimeException("Workspace with this id not found"));
+            WorkspaceMember workspaceMember=workspaceMemberRepository.findByUserAndWorkspace(user,workspace)
+                    .orElseThrow(()-> new RuntimeException("User doesn't belong to this workspace"));
+            if(workspaceMember.getRole()!=WorkspaceRole.OWNER)
+                throw new UnAuthorizedException("User doesn't has permission deleting");
+
+            workspaceRepository.delete(workspace);
+
+            return "Workspace with id " + workspaceId + " deleted successfully";
+
+
+    }
 }
