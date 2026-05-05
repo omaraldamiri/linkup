@@ -24,8 +24,14 @@ public class UserService {
     }
 
     public void updateUser(UpdatedUserDTO updatedUserDTO,User user){
-            if(userRepository.findByEmail(updatedUserDTO.getEmail()).isPresent())
-                throw  new EmailAlreadyExistsException("Email trying to update already exists");
+            
+        // only check if user is trying to update an existed other user email not his own
+            if(updatedUserDTO.getEmail() != null) {
+                userRepository.findByEmail(updatedUserDTO.getEmail()).ifPresent(existing -> {
+                    if (!existing.getId().equals(user.getId()))
+                        throw new EmailAlreadyExistsException("Email trying to update already exists");
+                });
+            }
 
 
             if(updatedUserDTO.getEmail()!=null) user.setEmail(updatedUserDTO.getEmail());

@@ -30,7 +30,8 @@ public class Workspace {
     private String slug;
     @Column(columnDefinition = "TEXT")
     private String description;
-    @Column(length = 500)
+    @Lob
+    @Column(columnDefinition = "MEDIUMTEXT")
     private String imageUrl;
     @CreatedDate
     @Column(updatable = false , nullable = false)

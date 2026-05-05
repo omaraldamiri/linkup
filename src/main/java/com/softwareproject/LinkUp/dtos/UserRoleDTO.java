@@ -1,22 +1,17 @@
 package com.softwareproject.LinkUp.dtos;
 
-import com.softwareproject.LinkUp.entities.Workspace;
+import com.softwareproject.LinkUp.entities.User;
+import com.softwareproject.LinkUp.enums.WorkspaceRole;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.ArrayList;
-import java.util.List;
-
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-
-public class AuthResponse {
-    private String token;
+public class UserRoleDTO {
     private UserDTO userDTO;
-    private List<WorkspaceDTO> workspaceDTOList=new ArrayList<>();
-
+    private WorkspaceRole role;
 }

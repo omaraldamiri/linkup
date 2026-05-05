@@ -9,8 +9,6 @@ import lombok.NoArgsConstructor;
 @Builder
 @AllArgsConstructor
 @NoArgsConstructor
-public class RemovingMemberDTO {
-    private String userId;
-    private String workSpaceId;
+public class WorkspaceRequest {
+    private String id;
 }
-  

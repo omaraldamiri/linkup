@@ -36,7 +36,8 @@ public class User implements UserDetails {
     private String email;
     @Column(nullable = true)
     private String password;
-    @Column(length = 500)
+    @Lob
+    @Column(columnDefinition = "MEDIUMTEXT")
     private String image;
     @Column(nullable = false)
     private Boolean oAuth2User = false;
