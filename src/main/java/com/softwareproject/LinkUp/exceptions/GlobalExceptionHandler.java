@@ -42,4 +42,8 @@ public class GlobalExceptionHandler {
     public ResponseEntity<String> handleUserAlreadyHasRoleException(UserAlreadyHasRoleException e){
         return ResponseEntity.status(400).body(e.getMessage());
     }
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<String> handle(RuntimeException e) {
+        return ResponseEntity.status(400).body(e.getMessage());
+    }
 }
