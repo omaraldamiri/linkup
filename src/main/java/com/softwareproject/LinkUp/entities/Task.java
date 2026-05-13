@@ -14,7 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Entity
-@Table(name="tasks")
+@Table(name = "tasks")
 @AllArgsConstructor
 @NoArgsConstructor
 @Getter
@@ -47,7 +47,7 @@ public class Task {
     @Column(nullable = false)
     private LocalDateTime dueTime;
 
-    @Column(nullable = false,updatable = false)
+    @Column(nullable = false, updatable = false)
     @CreatedDate
     private LocalDateTime createdAt;
     @LastModifiedDate
@@ -63,9 +63,8 @@ public class Task {
     @JoinColumn(name = "assignee_id")
     private User assignee;
 
-    @OneToMany(mappedBy = "task" , cascade = CascadeType.REMOVE , orphanRemoval = true)
-    private List<Comment> commentList=new ArrayList<>();
-
+    @OneToMany(mappedBy = "task", cascade = CascadeType.REMOVE, orphanRemoval = true)
+    private List<Comment> commentList = new ArrayList<>();
 
 
 }

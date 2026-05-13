@@ -3,12 +3,14 @@
     import com.softwareproject.LinkUp.dtos.EditingProjectRoleDTO;
     import com.softwareproject.LinkUp.dtos.ProjectDTO;
     import com.softwareproject.LinkUp.dtos.UpdateProjectDTO;
+    import com.softwareproject.LinkUp.dtos.UserDTO;
     import com.softwareproject.LinkUp.entities.*;
     import com.softwareproject.LinkUp.enums.ProjectRole;
     import com.softwareproject.LinkUp.enums.ProjectStatus;
     import com.softwareproject.LinkUp.exceptions.UnAuthorizedException;
     import com.softwareproject.LinkUp.exceptions.UserAlreadyHasRoleException;
     import com.softwareproject.LinkUp.repos.*;
+    import jakarta.validation.constraints.Email;
     import lombok.RequiredArgsConstructor;
     import org.springframework.mail.SimpleMailMessage;
     import org.springframework.mail.javamail.JavaMailSender;
@@ -212,6 +214,22 @@
                     .createdAt(project.getCreatedAt())
                     .workspaceId(project.getWorkspace().getId())
                     .build();
+        }
+
+        public List<UserDTO> getProjectMembers(String projectId, User user) {
+            Project project = projectRepository.findById(projectId)
+                    .orElseThrow(() -> new RuntimeException("Project not found"));
+            projectMemberRepository.findByUserAndProject(user, project)
+                    .orElseThrow(() -> new UnAuthorizedException("You are not in this project"));
+            return projectMemberRepository.findByProject(project)
+                    .stream()
+                    .map(pm -> UserDTO.builder()
+                            .id(pm.getUser().getId())
+                            .name(pm.getUser().getName())
+                            .email(pm.getUser().getEmail())
+                            .image(pm.getUser().getImage())
+                            .build())
+                    .toList();
         }
 
     }

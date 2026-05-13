@@ -3,6 +3,7 @@ package com.softwareproject.LinkUp.controllers;
 import com.softwareproject.LinkUp.dtos.EditingProjectRoleDTO;
 import com.softwareproject.LinkUp.dtos.ProjectDTO;
 import com.softwareproject.LinkUp.dtos.UpdateProjectDTO;
+import com.softwareproject.LinkUp.dtos.UserDTO;
 import com.softwareproject.LinkUp.entities.User;
 import com.softwareproject.LinkUp.enums.ProjectStatus;
 import com.softwareproject.LinkUp.services.ProjectService;
@@ -74,5 +75,12 @@ public class ProjectController {
         return ResponseEntity.ok(projectService.getProjectDetails(projectId,
                 (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal()));
     }
+
+    @GetMapping("/getmembers/{projectId}")
+    public ResponseEntity<List<UserDTO>> getProjectMembers(@PathVariable String projectId) {
+        return ResponseEntity.ok(projectService.getProjectMembers(projectId,
+                (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal()));
+    }
+
 
 }
