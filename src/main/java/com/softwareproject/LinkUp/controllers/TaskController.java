@@ -60,7 +60,17 @@ public class TaskController {
                 projectId));
     }
 
+    @GetMapping("/count/workspace/{workspaceId}")
+    public ResponseEntity<Long> countTasksForWorkspace(@PathVariable String workspaceId) {
+        return ResponseEntity.ok(taskService.countTasksForWorkspace(
+                (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal(),
+                workspaceId));
+    }
 
-
-
+    @GetMapping("/workspace/{workspaceId}")
+    public ResponseEntity<List<TaskDTO>> getTasksForWorkspace(@PathVariable String workspaceId) {
+        return ResponseEntity.ok(taskService.getTasksForWorkspace(
+                (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal(),
+                workspaceId));
+    }
 }

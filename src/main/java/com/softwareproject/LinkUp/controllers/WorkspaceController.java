@@ -39,7 +39,29 @@ public class WorkspaceController {
     public ResponseEntity<String> inviteMember(@RequestBody AddingWorkspaceMemberDTO addingMemberDTO) {
         workspaceService.inviteMember(addingMemberDTO,
                 (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal());
-        return ResponseEntity.ok("User with the email : " + addingMemberDTO.getUserEmail() + " added successfully!");
+        return ResponseEntity.ok("Invitation sent to " + addingMemberDTO.getUserEmail()
+                + ". They will be added after they accept the email link.");
+    }
+
+    @PostMapping("/invitations/accept")
+    public ResponseEntity<String> acceptWorkspaceInvitation(@RequestBody AcceptWorkspaceInvitationDTO dto) {
+        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        String message = workspaceService.acceptWorkspaceInvitation(dto, user);
+        return ResponseEntity.ok(message);
+    }
+
+    @GetMapping("/pending-invitations/{workspaceId}")
+    public ResponseEntity<List<PendingWorkspaceInvitationDTO>> getPendingInvitations(
+            @PathVariable String workspaceId) {
+        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        return ResponseEntity.ok(workspaceService.getPendingInvitations(workspaceId, user));
+    }
+
+    @DeleteMapping("/invitations/{invitationId}")
+    public ResponseEntity<String> revokeWorkspaceInvitation(@PathVariable String invitationId) {
+        User user = (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        workspaceService.revokeWorkspaceInvitation(invitationId, user);
+        return ResponseEntity.ok("Invitation cancelled.");
     }
 
     @DeleteMapping("/removeuser/{workspaceId}/{userId}")

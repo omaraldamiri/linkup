@@ -44,6 +44,9 @@ public class Workspace {
     @OneToMany(mappedBy = "workspace",cascade = CascadeType.REMOVE , orphanRemoval = true)
     private List<WorkspaceMember> workspaceMemberList=new ArrayList<>();
 
+    @OneToMany(mappedBy = "workspace", cascade = CascadeType.REMOVE, orphanRemoval = true)
+    private List<WorkspaceInvitation> workspaceInvitationList = new ArrayList<>();
+
     //projects relation ship one to many from workspace->project
     @OneToMany(mappedBy="workspace" , cascade = CascadeType.REMOVE , orphanRemoval = true)
     private List<Project> projectList=new ArrayList<>();

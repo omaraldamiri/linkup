@@ -1,4 +1,4 @@
-import { createContext, useState, useEffect } from "react";
+import { createContext, useState, useEffect, useCallback } from "react";
 import type { ReactNode } from "react";
 import type {
   WorkspaceDTO,
@@ -7,6 +7,7 @@ import type {
   AddingMemberDTO,
   EditingRoleDTO,
   CreateWorkspacePayload,
+  PendingWorkspaceInvitationDTO,
 } from "../types/workspaceDtos";
 import * as workspaceService from "../services/workspaceService";
 
@@ -14,12 +15,17 @@ export interface WorkspaceContextValue {
   currentWorkspace: WorkspaceDTO | null;
   members: UserRoleDTO[];
   membersLoading: boolean;
+  pendingInvitations: PendingWorkspaceInvitationDTO[];
+  pendingInvitationsLoading: boolean;
   selectWorkspace: (id: string) => void;
   createWorkspace: (data: CreateWorkspacePayload) => Promise<void>;
   inviteMember: (data: AddingMemberDTO) => Promise<void>;
   removeMember: (workspaceId: string, userId: string) => Promise<void>;
   editMemberRole: (data: EditingRoleDTO) => Promise<void>;
   deleteWorkspace: (workspaceId: string) => Promise<void>;
+  refreshPendingInvitations: () => Promise<void>;
+  acceptWorkspaceInvitation: (token: string) => Promise<string>;
+  revokeWorkspaceInvitation: (invitationId: string) => Promise<void>;
 }
 
 // Safe default — prevents null destructure crashes during transitional renders
@@ -27,12 +33,17 @@ const defaultValue: WorkspaceContextValue = {
   currentWorkspace: null,
   members: [],
   membersLoading: false,
+  pendingInvitations: [],
+  pendingInvitationsLoading: false,
   selectWorkspace: () => {},
   createWorkspace: async () => {},
   inviteMember: async () => {},
   removeMember: async () => {},
   editMemberRole: async () => {},
   deleteWorkspace: async () => {},
+  refreshPendingInvitations: async () => {},
+  acceptWorkspaceInvitation: async () => "",
+  revokeWorkspaceInvitation: async () => {},
 };
 
 export const WorkspaceContext =
@@ -52,6 +63,23 @@ const WorkspaceProvider = ({
   );
   const [members, setMembers] = useState<UserRoleDTO[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [pendingInvitations, setPendingInvitations] = useState<
+    PendingWorkspaceInvitationDTO[]
+  >([]);
+  const [pendingInvitationsLoading, setPendingInvitationsLoading] =
+    useState(false);
+
+  const loadPendingInvitations = useCallback(async (workspaceId: string) => {
+    setPendingInvitationsLoading(true);
+    try {
+      const data = await workspaceService.getPendingInvitations(workspaceId);
+      setPendingInvitations(data);
+    } catch {
+      setPendingInvitations([]);
+    } finally {
+      setPendingInvitationsLoading(false);
+    }
+  }, []);
 
   // Sync currentWorkspace whenever the workspaces list changes.
   //
@@ -67,6 +95,7 @@ const WorkspaceProvider = ({
     if (workspaces.length === 0) {
       setCurrentWorkspace(null);
       setMembers([]);
+      setPendingInvitations([]);
       return;
     }
 
@@ -108,6 +137,14 @@ const WorkspaceProvider = ({
     fetchMembers();
   }, [currentWorkspace?.id]);
 
+  useEffect(() => {
+    if (!currentWorkspace) {
+      setPendingInvitations([]);
+      return;
+    }
+    loadPendingInvitations(currentWorkspace.id);
+  }, [currentWorkspace?.id, loadPendingInvitations]);
+
   const selectWorkspace = (id: string): void => {
     const found = workspaces.find((ws) => ws.id === id) ?? null;
     setCurrentWorkspace(found);
@@ -124,12 +161,26 @@ const WorkspaceProvider = ({
 
   const inviteMember = async (data: AddingMemberDTO): Promise<void> => {
     await workspaceService.inviteMember(data);
-    if (currentWorkspace) {
-      const updated = await workspaceService.getWorkspaceMembers(
-        currentWorkspace.id,
-      );
-      setMembers(updated);
+    if (currentWorkspace?.id === data.workSpaceId) {
+      await loadPendingInvitations(data.workSpaceId);
     }
+  };
+
+  const refreshPendingInvitations = async (): Promise<void> => {
+    if (currentWorkspace) {
+      await loadPendingInvitations(currentWorkspace.id);
+    }
+  };
+
+  const acceptWorkspaceInvitation = async (token: string): Promise<string> => {
+    return workspaceService.acceptWorkspaceInvitation(token);
+  };
+
+  const revokeWorkspaceInvitation = async (
+    invitationId: string,
+  ): Promise<void> => {
+    await workspaceService.revokeWorkspaceInvitation(invitationId);
+    setPendingInvitations((prev) => prev.filter((p) => p.id !== invitationId));
   };
 
   const removeMember = async (
@@ -157,6 +208,7 @@ const WorkspaceProvider = ({
     onWorkspacesChange(updated);
     setCurrentWorkspace(updated[0] ?? null);
     setMembers([]);
+    setPendingInvitations([]);
   };
 
   return (
@@ -165,12 +217,17 @@ const WorkspaceProvider = ({
         currentWorkspace,
         members,
         membersLoading,
+        pendingInvitations,
+        pendingInvitationsLoading,
         selectWorkspace,
         createWorkspace,
         inviteMember,
         removeMember,
         editMemberRole,
         deleteWorkspace,
+        refreshPendingInvitations,
+        acceptWorkspaceInvitation,
+        revokeWorkspaceInvitation,
       }}
     >
       {children}

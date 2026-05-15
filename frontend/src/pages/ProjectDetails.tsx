@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ArrowLeftIcon,
@@ -8,60 +8,111 @@ import {
   CalendarIcon,
   FileStackIcon,
   ZapIcon,
+  UsersIcon,
 } from "lucide-react";
+import useProject from "../hooks/useProject";
 import ProjectAnalytics from "../components/ProjectAnalytics";
 import ProjectSettings from "../components/ProjectSettings";
 import CreateTaskDialog from "../components/CreateTaskDialog";
 import ProjectCalendar from "../components/ProjectCalendar";
 import ProjectTasks from "../components/ProjectTasks";
+import { toast } from "sonner";
+import type { ProjectStatus } from "../types/projectDtos";
 
-// TODO: replace with real API call when projects/tasks domain is implemented
-const MOCK_PROJECTS = [
-  { id: "1", name: "Website Redesign", status: "IN_PROGRESS", description: "Redesign the company website", createdAt: "2026-01-15" },
-  { id: "2", name: "Mobile App", status: "TODO", description: "Build the mobile application", createdAt: "2026-02-01" },
-  { id: "3", name: "API Integration", status: "COMPLETED", description: "Integrate third-party APIs", createdAt: "2026-01-20" },
-  { id: "4", name: "Database Migration", status: "IN_PROGRESS", description: "Migrate to new database schema", createdAt: "2026-03-01" },
-]
+const statusColors: Record<string, string> = {
+  PLANNING: "bg-zinc-200 text-zinc-900 dark:bg-zinc-600 dark:text-zinc-200",
+  ACTIVE:
+    "bg-emerald-200 text-emerald-900 dark:bg-emerald-500 dark:text-emerald-900",
+  ON_HOLD: "bg-amber-200 text-amber-900 dark:bg-amber-500 dark:text-amber-900",
+  COMPLETED: "bg-blue-200 text-blue-900 dark:bg-blue-500 dark:text-blue-900",
+  CANCELLED: "bg-red-200 text-red-900 dark:bg-red-500 dark:text-red-900",
+};
 
-const MOCK_TASKS = [
-  { id: "1", title: "Design mockups", status: "COMPLETED", priority: "HIGH", projectId: "1", assignee: "Jane Doe" },
-  { id: "2", title: "Set up CI/CD pipeline", status: "IN_PROGRESS", priority: "MEDIUM", projectId: "2", assignee: "John Smith" },
-  { id: "3", title: "Write unit tests", status: "TODO", priority: "LOW", projectId: "3", assignee: "Alice Johnson" },
-  { id: "4", title: "Code review", status: "IN_PROGRESS", priority: "HIGH", projectId: "1", assignee: "Bob Wilson" },
-  { id: "5", title: "Deploy to staging", status: "TODO", priority: "MEDIUM", projectId: "4", assignee: "Jane Doe" },
-]
+const ALL_STATUSES: ProjectStatus[] = [
+  "PLANNING",
+  "ACTIVE",
+  "ON_HOLD",
+  "COMPLETED",
+  "CANCELLED",
+];
 
 export default function ProjectDetail() {
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = searchParams.get("tab") || "tasks";
   const id = searchParams.get("id");
+  const tabParam = searchParams.get("tab") || "tasks";
 
   const navigate = useNavigate();
 
+  const {
+    currentProject,
+    currentUserRole,
+    projectMembers,
+    membersLoading,
+    projects,
+    projectsLoading,
+    projectDetailLoading,
+    selectProject,
+    ensureProjectSelected,
+    changeProjectStatus,
+  } = useProject();
+
+  const [activeTab, setActiveTab] = useState(tabParam);
   const [showCreateTask, setShowCreateTask] = useState(false);
-  const [activeTab, setActiveTab] = useState(tab);
+  const [changingStatus, setChangingStatus] = useState(false);
 
-  const project = useMemo(
-    () => MOCK_PROJECTS.find((p) => p.id === id) || null,
-    [id],
-  );
+  // Select the project when the URL id or loaded project list changes (fixes refresh)
+  useEffect(() => {
+    if (!id) return;
+    const inList = projects.some((p) => p.id === id);
+    if (inList) {
+      selectProject(id);
+    } else if (!projectsLoading) {
+      void ensureProjectSelected(id);
+    }
+  }, [id, projects, projectsLoading, selectProject, ensureProjectSelected]);
 
-  const tasks = useMemo(
-    () => MOCK_TASKS.filter((t) => t.projectId === id),
-    [id],
-  );
+  // Keep tab in sync with URL param
+  useEffect(() => {
+    setActiveTab(tabParam);
+  }, [tabParam]);
 
-  const statusColors = {
-    PLANNING: "bg-zinc-200 text-zinc-900 dark:bg-zinc-600 dark:text-zinc-200",
-    ACTIVE:
-      "bg-emerald-200 text-emerald-900 dark:bg-emerald-500 dark:text-emerald-900",
-    ON_HOLD:
-      "bg-amber-200 text-amber-900 dark:bg-amber-500 dark:text-amber-900",
-    COMPLETED: "bg-blue-200 text-blue-900 dark:bg-blue-500 dark:text-blue-900",
-    CANCELLED: "bg-red-200 text-red-900 dark:bg-red-500 dark:text-red-900",
+  const isLeader = currentUserRole === "LEADER";
+
+  const handleStatusChange = async (status: ProjectStatus) => {
+    if (!currentProject || status === currentProject.projectStatus) return;
+    setChangingStatus(true);
+    try {
+      await changeProjectStatus(currentProject.id, status);
+      toast.success(`Status changed to ${status.replace("_", " ")}`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? "Failed to change status");
+    } finally {
+      setChangingStatus(false);
+    }
   };
 
-  if (!project) {
+  // Tab definitions differ by role:
+  // - LEADER: tasks | calendar | analytics | settings
+  // - VIEWER: tasks | calendar | analytics | members
+  const tabs = [
+    { key: "tasks", label: "Tasks", icon: FileStackIcon },
+    { key: "calendar", label: "Calendar", icon: CalendarIcon },
+    { key: "analytics", label: "Analytics", icon: BarChart3Icon },
+    isLeader
+      ? { key: "settings", label: "Settings", icon: SettingsIcon }
+      : { key: "members", label: "Members", icon: UsersIcon },
+  ];
+
+  if (projectsLoading || projectDetailLoading) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto space-y-4">
+        <div className="h-8 w-48 rounded bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
+        <div className="h-40 rounded bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!currentProject || currentProject.id !== id) {
     return (
       <div className="p-6 text-center text-zinc-900 dark:text-zinc-200">
         <p className="text-3xl md:text-5xl mt-40 mb-10">Project not found</p>
@@ -78,7 +129,7 @@ export default function ProjectDetail() {
   return (
     <div className="space-y-5 max-w-6xl mx-auto text-zinc-900 dark:text-white">
       {/* Header */}
-      <div className="flex max-md:flex-col gap-4 flex-wrap items-start justify-between max-w-6xl">
+      <div className="flex max-md:flex-col gap-4 flex-wrap items-start justify-between">
         <div className="flex items-center gap-4">
           <button
             className="p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-400"
@@ -87,52 +138,77 @@ export default function ProjectDetail() {
             <ArrowLeftIcon className="w-4 h-4" />
           </button>
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-medium">{project.name}</h1>
-            <span
-              className={`px-2 py-1 rounded text-xs capitalize ${statusColors[project.status]}`}
-            >
-              {project.status.replace("_", " ")}
-            </span>
+            <h1 className="text-xl font-medium">{currentProject.name}</h1>
+
+            {/* Status badge — clickable dropdown for leaders */}
+            {isLeader ? (
+              <div className="relative">
+                <select
+                  value={currentProject.projectStatus}
+                  disabled={changingStatus}
+                  onChange={(e) =>
+                    handleStatusChange(e.target.value as ProjectStatus)
+                  }
+                  className={`px-2 py-1 rounded text-xs border-0 cursor-pointer appearance-none disabled:opacity-60 ${statusColors[currentProject.projectStatus] ?? ""}`}
+                >
+                  {ALL_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s.replace("_", " ")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <span
+                className={`px-2 py-1 rounded text-xs ${statusColors[currentProject.projectStatus] ?? ""}`}
+              >
+                {currentProject.projectStatus.replace("_", " ")}
+              </span>
+            )}
           </div>
         </div>
-        <button
-          onClick={() => setShowCreateTask(true)}
-          className="flex items-center gap-2 px-5 py-2 text-sm rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white"
-        >
-          <PlusIcon className="size-4" />
-          New Task
-        </button>
+
+        {/* New Task button — available to leaders only */}
+        {isLeader && (
+          <button
+            onClick={() => setShowCreateTask(true)}
+            className="flex items-center gap-2 px-5 py-2 text-sm rounded bg-gradient-to-br from-blue-500 to-blue-600 text-white"
+          >
+            <PlusIcon className="size-4" />
+            New Task
+          </button>
+        )}
       </div>
 
       {/* Info Cards */}
       <div className="grid grid-cols-2 sm:flex flex-wrap gap-6">
         {[
           {
-            label: "Total Tasks",
-            value: tasks.length,
+            label: "Progress",
+            value: `${currentProject.progress ?? 0}%`,
             color: "text-zinc-900 dark:text-white",
           },
           {
-            label: "Completed",
-            value: tasks.filter((t) => t.status === "DONE").length,
-            color: "text-emerald-700 dark:text-emerald-400",
-          },
-          {
-            label: "In Progress",
-            value: tasks.filter(
-              (t) => t.status === "IN_PROGRESS" || t.status === "TODO",
-            ).length,
+            label: "Priority",
+            value: currentProject.projectPriority ?? "—",
             color: "text-amber-700 dark:text-amber-400",
           },
           {
             label: "Team Members",
-            value: project.members?.length || 0,
+            value: projectMembers.length,
             color: "text-blue-700 dark:text-blue-400",
+          },
+          {
+            label: "Your Role",
+            value: currentUserRole ?? "—",
+            color: isLeader
+              ? "text-emerald-700 dark:text-emerald-400"
+              : "text-zinc-600 dark:text-zinc-400",
           },
         ].map((card, idx) => (
           <div
             key={idx}
-            className=" dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50 border border-zinc-200 dark:border-zinc-800 flex justify-between sm:min-w-60 p-4 py-2.5 rounded"
+            className="dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50 border border-zinc-200 dark:border-zinc-800 flex justify-between sm:min-w-52 p-4 py-2.5 rounded"
           >
             <div>
               <div className="text-sm text-zinc-600 dark:text-zinc-400">
@@ -150,17 +226,12 @@ export default function ProjectDetail() {
       {/* Tabs */}
       <div>
         <div className="inline-flex flex-wrap max-sm:grid grid-cols-3 gap-2 border border-zinc-200 dark:border-zinc-800 rounded overflow-hidden">
-          {[
-            { key: "tasks", label: "Tasks", icon: FileStackIcon },
-            { key: "calendar", label: "Calendar", icon: CalendarIcon },
-            { key: "analytics", label: "Analytics", icon: BarChart3Icon },
-            { key: "settings", label: "Settings", icon: SettingsIcon },
-          ].map((tabItem) => (
+          {tabs.map((tabItem) => (
             <button
               key={tabItem.key}
               onClick={() => {
                 setActiveTab(tabItem.key);
-                setSearchParams({ id: id, tab: tabItem.key });
+                setSearchParams({ id: id!, tab: tabItem.key });
               }}
               className={`flex items-center gap-2 px-4 py-2 text-sm transition-all ${activeTab === tabItem.key ? "bg-zinc-100 dark:bg-zinc-800/80" : "hover:bg-zinc-50 dark:hover:bg-zinc-700"}`}
             >
@@ -171,31 +242,74 @@ export default function ProjectDetail() {
         </div>
 
         <div className="mt-6">
-          {activeTab === "tasks" && (
-            <div className=" dark:bg-zinc-900/40 rounded max-w-6xl">
-              <ProjectTasks tasks={tasks} />
-            </div>
-          )}
-          {activeTab === "analytics" && (
-            <div className=" dark:bg-zinc-900/40 rounded max-w-6xl">
-              <ProjectAnalytics tasks={tasks} project={project} />
-            </div>
-          )}
-          {activeTab === "calendar" && (
-            <div className=" dark:bg-zinc-900/40 rounded max-w-6xl">
-              <ProjectCalendar tasks={tasks} />
-            </div>
-          )}
-          {activeTab === "settings" && (
-            <div className=" dark:bg-zinc-900/40 rounded max-w-6xl">
-              <ProjectSettings project={project} />
+          {/* All three components now pull from context directly */}
+          {activeTab === "tasks" && <ProjectTasks />}
+          {activeTab === "analytics" && <ProjectAnalytics />}
+          {activeTab === "calendar" && <ProjectCalendar />}
+
+          {/* LEADER only */}
+          {activeTab === "settings" && isLeader && <ProjectSettings />}
+
+          {/* VIEWER only — read-only member list */}
+          {activeTab === "members" && !isLeader && (
+            <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-6 dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50">
+              <h2 className="text-lg font-medium text-zinc-900 dark:text-zinc-300 mb-4">
+                Team Members{" "}
+                <span className="text-sm text-zinc-500 dark:text-zinc-400">
+                  ({projectMembers.length})
+                </span>
+              </h2>
+              {membersLoading ? (
+                <div className="space-y-2">
+                  {[...Array(3)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-10 rounded dark:bg-zinc-800 animate-pulse"
+                    />
+                  ))}
+                </div>
+              ) : projectMembers.length === 0 ? (
+                <p className="text-sm text-zinc-500">No members found.</p>
+              ) : (
+                <div className="space-y-2">
+                  {projectMembers.map((m) => (
+                    <div
+                      key={m.userDTO.id}
+                      className="flex items-center justify-between px-3 py-2 rounded dark:bg-zinc-800/60 text-sm text-zinc-900 dark:text-zinc-300"
+                    >
+                      <div className="flex items-center gap-2">
+                        {m.userDTO.image ? (
+                          <img
+                            src={m.userDTO.image}
+                            alt={m.userDTO.name}
+                            className="size-6 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="size-6 rounded-full bg-zinc-600 flex items-center justify-center text-xs text-white">
+                            {m.userDTO.name[0]?.toUpperCase()}
+                          </div>
+                        )}
+                        <span>{m.userDTO.name}</span>
+                        <span className="text-zinc-500 dark:text-zinc-400 text-xs">
+                          {m.userDTO.email}
+                        </span>
+                      </div>
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded ring ${m.role === "LEADER" ? "ring-emerald-300 dark:ring-emerald-600 text-emerald-700 dark:text-emerald-400" : "ring-zinc-200 dark:ring-zinc-600 text-zinc-500 dark:text-zinc-400"}`}
+                      >
+                        {m.role}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Create Task Modal */}
-      {showCreateTask && (
+      {/* CreateTaskDialog — leader only */}
+      {isLeader && showCreateTask && (
         <CreateTaskDialog
           showCreateTask={showCreateTask}
           setShowCreateTask={setShowCreateTask}

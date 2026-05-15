@@ -4,7 +4,7 @@ import {
   SearchIcon,
   PanelLeft,
   LogOut,
-  Settings,
+  Shield,
   UserCircle,
 } from "lucide-react";
 import { MoonIcon, SunIcon } from "lucide-react";
@@ -127,6 +127,14 @@ const Navbar = ({ setIsSidebarOpen }: NavbarProps) => {
                 <DropdownMenuSeparator />
 
                 <DropdownMenuGroup>
+                  {user?.systemAdmin && (
+                    <DropdownMenuItem
+                      className="cursor-pointer gap-2"
+                      onClick={() => navigate("/admin")}
+                    >
+                      <Shield size={15} /> Admin dashboard
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem
                     className="cursor-pointer gap-2"
                     onClick={() => setProfileOpen(true)}

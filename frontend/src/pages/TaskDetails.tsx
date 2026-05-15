@@ -1,167 +1,320 @@
+import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
-import toast from "react-hot-toast";
-import { useMemo } from "react";
-import { useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import { CalendarIcon, MessageCircle, PenIcon } from "lucide-react";
-import { assets } from "../assets/assets";
+import { toast } from "sonner";
+import { useSearchParams, useNavigate } from "react-router-dom";
+import {
+  CalendarIcon,
+  PenIcon,
+  Trash2Icon,
+  ArrowLeftIcon,
+  MessageCircleIcon,
+  SendIcon,
+} from "lucide-react";
+import useTask from "../hooks/useTask";
+import useProject from "../hooks/useProject";
+import useComment from "../hooks/useComment";
+import useAuth from "../hooks/useAuth";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
-// TODO: replace with real API call when projects/tasks domain is implemented
-const MOCK_PROJECTS = [
-  { id: "1", name: "Website Redesign", status: "IN_PROGRESS", description: "Redesign the company website", createdAt: "2026-01-15" },
-  { id: "2", name: "Mobile App", status: "TODO", description: "Build the mobile application", createdAt: "2026-02-01" },
-  { id: "3", name: "API Integration", status: "COMPLETED", description: "Integrate third-party APIs", createdAt: "2026-01-20" },
-  { id: "4", name: "Database Migration", status: "IN_PROGRESS", description: "Migrate to new database schema", createdAt: "2026-03-01" },
-]
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-const MOCK_TASKS = [
-  { id: "1", title: "Design mockups", status: "COMPLETED", priority: "HIGH", projectId: "1", assignee: "Jane Doe" },
-  { id: "2", title: "Set up CI/CD pipeline", status: "IN_PROGRESS", priority: "MEDIUM", projectId: "2", assignee: "John Smith" },
-  { id: "3", title: "Write unit tests", status: "TODO", priority: "LOW", projectId: "3", assignee: "Alice Johnson" },
-  { id: "4", title: "Code review", status: "IN_PROGRESS", priority: "HIGH", projectId: "1", assignee: "Bob Wilson" },
-  { id: "5", title: "Deploy to staging", status: "TODO", priority: "MEDIUM", projectId: "4", assignee: "Jane Doe" },
-]
+const formatDate = (
+  dateStr: string | null,
+  pattern = "dd MMM yyyy",
+): string => {
+  if (!dateStr) return "—";
+  try {
+    return format(new Date(dateStr), pattern);
+  } catch {
+    return "—";
+  }
+};
+
+const statusColors: Record<string, string> = {
+  TODO: "bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-300",
+  IN_PROGRESS: "bg-blue-200 dark:bg-blue-900 text-blue-900 dark:text-blue-300",
+  DONE: "bg-emerald-200 dark:bg-emerald-900 text-emerald-900 dark:text-emerald-300",
+};
+
+const typeColors: Record<string, string> = {
+  TASK: "bg-green-200 dark:bg-green-900 text-green-900 dark:text-green-300",
+  BUG: "bg-red-200 dark:bg-red-900 text-red-900 dark:text-red-300",
+  FEATURE: "bg-blue-200 dark:bg-blue-900 text-blue-900 dark:text-blue-300",
+  IMPROVEMENT:
+    "bg-purple-200 dark:bg-purple-900 text-purple-900 dark:text-purple-300",
+  OTHER: "bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-300",
+};
+
+const priorityColors: Record<string, string> = {
+  LOW: "bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300",
+  MEDIUM: "bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-300",
+  HIGH: "bg-red-200 dark:bg-red-900 text-red-900 dark:text-red-300",
+};
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 const TaskDetails = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+
   const projectId = searchParams.get("projectId");
   const taskId = searchParams.get("taskId");
 
-  const user = { id: "user_1" };
-  const [comments, setComments] = useState([]);
+  const { tasks, tasksLoading, currentTask, selectTask, deleteTask } =
+    useTask();
+  const { currentProject, currentUserRole, selectProject } = useProject();
+  const { comments, commentsLoading, createComment } = useComment();
+  const { user } = useAuth();
+
+  const isLeader = currentUserRole === "LEADER";
+
+  const [deleting, setDeleting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [newComment, setNewComment] = useState("");
+  const [posting, setPosting] = useState(false);
 
-  const task = useMemo(
-    () => MOCK_TASKS.find((t) => t.id === taskId) || null,
-    [taskId],
-  );
+  const commentsEndRef = useRef<HTMLDivElement>(null);
 
-  const project = useMemo(
-    () => MOCK_PROJECTS.find((p) => p.id === projectId) || null,
-    [projectId],
-  );
+  // Auto-scroll to the latest comment whenever the list grows
+  useEffect(() => {
+    commentsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [comments]);
 
-  const handleAddComment = async () => {
-    if (!newComment.trim()) return;
+  // Ensure the right project and task are selected when arriving via direct URL
+  useEffect(() => {
+    if (projectId && currentProject?.id !== projectId) {
+      selectProject(projectId);
+    }
+  }, [projectId]);
 
+  useEffect(() => {
+    if (taskId) selectTask(taskId);
+  }, [taskId, tasks]);
+
+  // ── Handlers ─────────────────────────────────────────────────────────────
+
+  const handleDelete = async () => {
+    if (!currentTask) return;
+
+    setDeleting(true);
     try {
-      toast.loading("Adding comment...");
-
-      //  Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      const dummyComment = {
-        id: Date.now(),
-        user: { id: 1, name: "User", image: assets.profile_img_a },
-        content: newComment,
-        createdAt: new Date(),
-      };
-
-      setComments((prev) => [...prev, dummyComment]);
-      setNewComment("");
-      toast.dismissAll();
-      toast.success("Comment added.");
-    } catch (error) {
-      toast.dismissAll();
-      toast.error(error?.response?.data?.message || error.message);
-      console.error(error);
+      await deleteTask(currentTask.id);
+      toast.success("Task deleted");
+      setDeleteConfirmOpen(false);
+      navigate(`/projectsDetail?id=${currentTask.projectId}&tab=tasks`);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? "Failed to delete task");
+      setDeleting(false);
     }
   };
 
-  if (!task)
-    return <div className="text-red-500 px-4 py-6">Task not found.</div>;
+  const handlePostComment = async () => {
+    const trimmed = newComment.trim();
+    if (!trimmed) return;
+
+    setPosting(true);
+    try {
+      await createComment(trimmed);
+      setNewComment("");
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message ?? "Failed to post comment");
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  // Ctrl/Cmd + Enter submits the comment
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      handlePostComment();
+    }
+  };
+
+  // ── Loading / not-found guards ────────────────────────────────────────────
+
+  if (tasksLoading) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto space-y-4">
+        <div className="h-8 w-48 rounded bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
+        <div className="h-40 rounded bg-zinc-200 dark:bg-zinc-800 animate-pulse" />
+      </div>
+    );
+  }
+
+  if (!currentTask || currentTask.id !== taskId) {
+    return (
+      <div className="p-6 text-center text-zinc-900 dark:text-zinc-200">
+        <p className="text-3xl md:text-5xl mt-40 mb-10">Task not found</p>
+        <button
+          onClick={() =>
+            navigate(
+              projectId
+                ? `/projectsDetail?id=${projectId}&tab=tasks`
+                : "/projects",
+            )
+          }
+          className="mt-4 px-4 py-2 rounded bg-zinc-200 text-zinc-900 hover:bg-zinc-300 dark:bg-zinc-700 dark:text-white dark:hover:bg-zinc-600"
+        >
+          Back to Project
+        </button>
+      </div>
+    );
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col-reverse lg:flex-row gap-6 sm:p-4 text-gray-900 dark:text-zinc-100 max-w-6xl mx-auto">
-      {/* Left: Comments / Chatbox */}
+    <>
+    <div className="flex flex-col lg:flex-row gap-6 sm:p-4 text-gray-900 dark:text-zinc-100 max-w-6xl mx-auto">
+      {/* ── Left: Task Discussion ── */}
       <div className="w-full lg:w-2/3">
-        <div className="p-5 rounded-md  border border-gray-300 dark:border-zinc-800  flex flex-col lg:h-[80vh]">
-          <h2 className="text-base font-semibold flex items-center gap-2 mb-4 text-gray-900 dark:text-white">
-            <MessageCircle className="size-5" /> Task Discussion (
-            {comments.length})
+        <div className="p-5 rounded-md border border-gray-300 dark:border-zinc-800 flex flex-col lg:h-[80vh]">
+          {/* Header */}
+          <h2 className="text-base font-semibold flex items-center gap-2 mb-4 text-gray-900 dark:text-white shrink-0">
+            <MessageCircleIcon className="size-5" />
+            Task Discussion ({comments.length})
           </h2>
 
-          <div className="flex-1 md:overflow-y-scroll no-scrollbar">
-            {comments.length > 0 ? (
-              <div className="flex flex-col gap-4 mb-6 mr-2">
-                {comments.map((comment) => (
+          {/* Comment list — scrollable */}
+          <div className="flex-1 overflow-y-auto no-scrollbar min-h-0">
+            {commentsLoading ? (
+              <div className="space-y-3">
+                {[...Array(3)].map((_, i) => (
                   <div
-                    key={comment.id}
-                    className={`sm:max-w-4/5 dark:bg-gradient-to-br dark:from-zinc-800 dark:to-zinc-900 border border-gray-300 dark:border-zinc-700 p-3 rounded-md ${comment.user.id === user?.id ? "ml-auto" : "mr-auto"}`}
-                  >
-                    <div className="flex items-center gap-2 mb-1 text-sm text-gray-500 dark:text-zinc-400">
-                      <img
-                        src={comment.user.image}
-                        alt="avatar"
-                        className="size-5 rounded-full"
-                      />
-                      <span className="font-medium text-gray-900 dark:text-white">
-                        {comment.user.name}
-                      </span>
-                      <span className="text-xs text-gray-400 dark:text-zinc-600">
-                        •{" "}
-                        {format(
-                          new Date(comment.createdAt),
-                          "dd MMM yyyy, HH:mm",
-                        )}
-                      </span>
-                    </div>
-                    <p className="text-sm text-gray-900 dark:text-zinc-200">
-                      {comment.content}
-                    </p>
-                  </div>
+                    key={i}
+                    className="h-14 rounded bg-zinc-200 dark:bg-zinc-800 animate-pulse"
+                  />
                 ))}
               </div>
-            ) : (
-              <p className="text-gray-600 dark:text-zinc-500 mb-4 text-sm">
+            ) : comments.length === 0 ? (
+              <p className="text-gray-600 dark:text-zinc-500 text-sm">
                 No comments yet. Be the first!
               </p>
+            ) : (
+              <div className="flex flex-col gap-3 mb-4 pr-1">
+                {comments.map((comment, idx) => {
+                  const isOwn = comment.userEmail === user?.email;
+                  return (
+                    <div
+                      key={idx}
+                      className={`max-w-[85%] dark:bg-gradient-to-br dark:from-zinc-800 dark:to-zinc-900 border border-gray-300 dark:border-zinc-700 p-3 rounded-md ${isOwn ? "ml-auto" : "mr-auto"}`}
+                    >
+                      {/* Author + timestamp */}
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="size-5 rounded-full bg-blue-500 flex items-center justify-center text-[9px] text-white font-medium shrink-0">
+                          {comment.userEmail?.[0]?.toUpperCase() ?? "?"}
+                        </div>
+                        <span className="text-xs font-medium text-gray-900 dark:text-zinc-200 truncate max-w-[140px]">
+                          {comment.userEmail}
+                        </span>
+                        {comment.createdAt && (
+                          <span className="text-xs text-gray-400 dark:text-zinc-600 shrink-0">
+                            · {formatDate(comment.createdAt, "dd MMM, HH:mm")}
+                          </span>
+                        )}
+                      </div>
+                      {/* Content */}
+                      <p className="text-sm text-gray-900 dark:text-zinc-200 whitespace-pre-wrap break-words">
+                        {comment.content}
+                      </p>
+                    </div>
+                  );
+                })}
+                <div ref={commentsEndRef} />
+              </div>
             )}
           </div>
 
-          {/* Add Comment */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3">
+          {/* Input — pinned to bottom */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-3 pt-3 shrink-0 border-t border-gray-200 dark:border-zinc-800">
             <textarea
               value={newComment}
               onChange={(e) => setNewComment(e.target.value)}
-              placeholder="Write a comment..."
-              className="w-full dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-md p-2 text-sm text-gray-900 dark:text-zinc-200 resize-none focus:outline-none focus:ring-1 focus:ring-blue-600"
+              onKeyDown={handleKeyDown}
+              placeholder="Write a comment… (Ctrl+Enter to post)"
               rows={3}
+              className="w-full dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-md p-2 text-sm text-gray-900 dark:text-zinc-200 resize-none focus:outline-none focus:ring-1 focus:ring-blue-600"
             />
             <button
-              onClick={handleAddComment}
-              className="bg-gradient-to-l from-blue-500 to-blue-600 transition-colors text-white text-sm px-5 py-2 rounded "
+              onClick={handlePostComment}
+              disabled={posting || !newComment.trim()}
+              className="flex items-center gap-2 bg-gradient-to-l from-blue-500 to-blue-600 text-white text-sm px-5 py-2 rounded disabled:opacity-60 transition-opacity"
             >
-              Post
+              <SendIcon className="size-4" />
+              {posting ? "Posting…" : "Post"}
             </button>
           </div>
         </div>
       </div>
 
-      {/* Right: Task + Project Info */}
+      {/* ── Right: Task info + Project info ── */}
       <div className="w-full lg:w-1/2 flex flex-col gap-6">
-        {/* Task Info */}
-        <div className="p-5 rounded-md bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-800 ">
-          <div className="mb-3">
+        {/* Back button */}
+        <button
+          onClick={() =>
+            navigate(
+              projectId
+                ? `/projectsDetail?id=${projectId}&tab=tasks`
+                : "/projects",
+            )
+          }
+          className="self-start flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+        >
+          <ArrowLeftIcon className="size-4" />
+          Back to project
+        </button>
+
+        {/* Task card */}
+        <div className="p-5 rounded-md bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-800">
+          <div className="flex items-start justify-between gap-3 mb-3">
             <h1 className="text-lg font-medium text-gray-900 dark:text-zinc-100">
-              {task.title}
+              {currentTask.title}
             </h1>
-            <div className="flex flex-wrap gap-2 mt-2">
-              <span className="px-2 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-zinc-300 text-xs">
-                {task.status}
-              </span>
-              <span className="px-2 py-0.5 rounded bg-blue-200 dark:bg-blue-900 text-blue-900 dark:text-blue-300 text-xs">
-                {task.type}
-              </span>
-              <span className="px-2 py-0.5 rounded bg-green-200 dark:bg-emerald-900 text-green-900 dark:text-emerald-300 text-xs">
-                {task.priority}
-              </span>
-            </div>
+            {/* Delete — leader only */}
+            {isLeader && (
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmOpen(true)}
+                disabled={deleting}
+                title="Delete task"
+                className="p-1.5 rounded text-red-500 hover:bg-red-100 dark:hover:bg-red-950 transition-colors disabled:opacity-50 shrink-0"
+              >
+                <Trash2Icon className="size-4" />
+              </button>
+            )}
           </div>
 
-          {task.description && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            <span
+              className={`px-2 py-0.5 rounded text-xs ${statusColors[currentTask.taskStatus] ?? ""}`}
+            >
+              {currentTask.taskStatus.replace("_", " ")}
+            </span>
+            <span
+              className={`px-2 py-0.5 rounded text-xs ${typeColors[currentTask.taskType] ?? ""}`}
+            >
+              {currentTask.taskType}
+            </span>
+            <span
+              className={`px-2 py-0.5 rounded text-xs ${priorityColors[currentTask.taskPriority] ?? ""}`}
+            >
+              {currentTask.taskPriority}
+            </span>
+          </div>
+
+          {currentTask.description && (
             <p className="text-sm text-gray-600 dark:text-zinc-400 leading-relaxed mb-4">
-              {task.description}
+              {currentTask.description}
             </p>
           )}
 
@@ -169,41 +322,77 @@ const TaskDetails = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-700 dark:text-zinc-300">
             <div className="flex items-center gap-2">
-              <img
-                src={task.assignee?.image}
-                className="size-5 rounded-full"
-                alt="avatar"
-              />
-              {task.assignee?.name || "Unassigned"}
+              <div className="size-5 rounded-full bg-blue-500 flex items-center justify-center text-[10px] text-white font-medium shrink-0">
+                {currentTask.assigneeEmail?.[0]?.toUpperCase() ?? "?"}
+              </div>
+              <span className="truncate text-xs">
+                {currentTask.assigneeEmail || "Unassigned"}
+              </span>
             </div>
             <div className="flex items-center gap-2">
-              <CalendarIcon className="size-4 text-gray-500 dark:text-zinc-500" />
-              Due : {format(new Date(task.due_date), "dd MMM yyyy")}
+              <CalendarIcon className="size-4 text-gray-500 dark:text-zinc-500 shrink-0" />
+              <span>Due: {formatDate(currentTask.dueTime)}</span>
             </div>
           </div>
+
+          {currentTask.createdAt && (
+            <p className="text-xs text-zinc-400 dark:text-zinc-600 mt-4">
+              Created {formatDate(currentTask.createdAt, "dd MMM yyyy, HH:mm")}
+            </p>
+          )}
         </div>
 
-        {/* Project Info */}
-        {project && (
-          <div className="p-4 rounded-md bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 border border-gray-300 dark:border-zinc-800 ">
+        {/* Project card */}
+        {currentProject && (
+          <div className="p-4 rounded-md bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 border border-gray-300 dark:border-zinc-800">
             <p className="text-xl font-medium mb-4">Project Details</p>
             <h2 className="text-gray-900 dark:text-zinc-100 flex items-center gap-2">
-              {" "}
-              <PenIcon className="size-4" /> {project.name}
+              <PenIcon className="size-4" />
+              {currentProject.name}
             </h2>
+            {currentProject.description && (
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-2">
+                {currentProject.description}
+              </p>
+            )}
             <p className="text-xs mt-3">
-              Project Start Date:{" "}
-              {format(new Date(project.start_date), "dd MMM yyyy")}
+              Start: {formatDate(currentProject.startDate)}
             </p>
             <div className="flex flex-wrap gap-4 text-sm text-gray-500 dark:text-zinc-400 mt-3">
-              <span>Status: {project.status}</span>
-              <span>Priority: {project.priority}</span>
-              <span>Progress: {project.progress}%</span>
+              <span>
+                Status: {currentProject.projectStatus.replace("_", " ")}
+              </span>
+              <span>Priority: {currentProject.projectPriority}</span>
+              <span>Progress: {currentProject.progress ?? 0}%</span>
             </div>
           </div>
         )}
       </div>
     </div>
+
+    <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete this task?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {currentTask
+              ? `"${currentTask.title}" will be permanently removed. This cannot be undone.`
+              : "This task will be permanently removed. This cannot be undone."}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleDelete}
+            disabled={deleting}
+            className="bg-red-500 hover:bg-red-600 text-white"
+          >
+            {deleting ? "Deleting..." : "Delete task"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 };
 

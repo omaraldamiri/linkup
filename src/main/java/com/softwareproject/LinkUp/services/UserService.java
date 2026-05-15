@@ -20,7 +20,9 @@ public class UserService {
                 .name(user.getName())
                 .email(user.getEmail())
                 .image(user.getImage())
-                .createdAt(user.getCreatedAt()).build();
+                .createdAt(user.getCreatedAt())
+                .systemAdmin(Boolean.TRUE.equals(user.getSystemAdmin()))
+                .build();
     }
 
     public void updateUser(UpdatedUserDTO updatedUserDTO,User user){
@@ -38,7 +40,7 @@ public class UserService {
             if(updatedUserDTO.getName()!=null) user.setName(updatedUserDTO.getName());
             if(updatedUserDTO.getImage()!=null)user.setImage(updatedUserDTO.getImage());
             if(updatedUserDTO.getPassword()!=null)user.setPassword(passwordEncoder.encode(updatedUserDTO.getPassword()));
-            userRepository.save(user);
+            userRepository.save(user); 
     }
 
 

@@ -7,50 +7,7 @@ import {
   Square,
 } from "lucide-react";
 import { format } from "date-fns";
-
-// TODO: replace with real API call when projects/tasks domain is implemented
-const MOCK_TASKS = [
-  {
-    id: "1",
-    title: "Design mockups",
-    status: "COMPLETED",
-    priority: "HIGH",
-    projectId: "1",
-    assignee: "Jane Doe",
-  },
-  {
-    id: "2",
-    title: "Set up CI/CD pipeline",
-    status: "IN_PROGRESS",
-    priority: "MEDIUM",
-    projectId: "2",
-    assignee: "John Smith",
-  },
-  {
-    id: "3",
-    title: "Write unit tests",
-    status: "TODO",
-    priority: "LOW",
-    projectId: "3",
-    assignee: "Alice Johnson",
-  },
-  {
-    id: "4",
-    title: "Code review",
-    status: "IN_PROGRESS",
-    priority: "HIGH",
-    projectId: "1",
-    assignee: "Bob Wilson",
-  },
-  {
-    id: "5",
-    title: "Deploy to staging",
-    status: "TODO",
-    priority: "MEDIUM",
-    projectId: "4",
-    assignee: "Jane Doe",
-  },
-];
+import useTask from "../hooks/useTask";
 
 const typeIcons = {
   BUG: { icon: Bug, color: "text-red-500 dark:text-red-400" },
@@ -71,7 +28,33 @@ const statusColors = {
 };
 
 const RecentActivity = () => {
-  const tasks = MOCK_TASKS;
+  const { workspaceTasks, workspaceTasksLoading } = useTask();
+
+  const sortedTasks = [...workspaceTasks].sort((a, b) => {
+    const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+    const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+    return bTime - aTime;
+  });
+
+  if (workspaceTasksLoading) {
+    return (
+      <div className="bg-white dark:bg-zinc-950 dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
+        <div className="border-b border-zinc-200 dark:border-zinc-800 p-4">
+          <h2 className="text-lg text-zinc-800 dark:text-zinc-200">
+            Recent Activity
+          </h2>
+        </div>
+        <div className="p-6 space-y-4">
+          {[...Array(3)].map((_, i) => (
+            <div
+              key={i}
+              className="h-16 rounded bg-zinc-200 dark:bg-zinc-800 animate-pulse"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white dark:bg-zinc-950 dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 rounded-lg transition-all overflow-hidden">
@@ -82,7 +65,7 @@ const RecentActivity = () => {
       </div>
 
       <div className="p-0">
-        {tasks.length === 0 ? (
+        {sortedTasks.length === 0 ? (
           <div className="p-12 text-center">
             <div className="w-16 h-16 mx-auto mb-4 bg-zinc-200 dark:bg-zinc-800 rounded-full flex items-center justify-center">
               <Clock className="w-8 h-8 text-zinc-600 dark:text-zinc-500" />
@@ -93,14 +76,14 @@ const RecentActivity = () => {
           </div>
         ) : (
           <div className="divide-y divide-zinc-200 dark:divide-zinc-800">
-            {tasks.map((task) => {
-              const TypeIcon = task.type
-                ? typeIcons[task.type]?.icon || Square
-                : Square;
-              const iconColor = task.type
-                ? typeIcons[task.type]?.color ||
-                  "text-gray-500 dark:text-gray-400"
-                : "text-gray-500 dark:text-gray-400";
+            {sortedTasks.map((task) => {
+              const typeKey = task.taskType as keyof typeof typeIcons;
+              const TypeIcon = typeIcons[typeKey]?.icon ?? Square;
+              const iconColor =
+                typeIcons[typeKey]?.color ?? "text-gray-500 dark:text-gray-400";
+
+              // Show first part of email as a readable label
+              const assigneeLabel = task.assigneeEmail.split("@")[0];
 
               return (
                 <div
@@ -117,30 +100,21 @@ const RecentActivity = () => {
                           {task.title}
                         </h4>
                         <span
-                          className={`ml-2 px-2 py-1 rounded text-xs ${statusColors[task.status] || "bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300"}`}
+                          className={`ml-2 px-2 py-1 rounded text-xs ${statusColors[task.taskStatus] ?? "bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300"}`}
                         >
-                          {task.status?.replace("_", " ")}
+                          {task.taskStatus.replace("_", " ")}
                         </span>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
-                        {task.type && (
-                          <span className="capitalize">
-                            {task.type.toLowerCase()}
-                          </span>
-                        )}
-                        {task.assignee && (
-                          <div className="flex items-center gap-1">
-                            <div className="w-4 h-4 bg-zinc-300 dark:bg-zinc-700 rounded-full flex items-center justify-center text-[10px] text-zinc-800 dark:text-zinc-200">
-                              {typeof task.assignee === "string"
-                                ? task.assignee[0].toUpperCase()
-                                : (task.assignee.name?.[0]?.toUpperCase() ??
-                                  "?")}
-                            </div>
-                            {typeof task.assignee === "string"
-                              ? task.assignee
-                              : task.assignee.name}
+                        <span className="capitalize">
+                          {task.taskType.toLowerCase()}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <div className="w-4 h-4 bg-zinc-300 dark:bg-zinc-700 rounded-full flex items-center justify-center text-[10px] text-zinc-800 dark:text-zinc-200">
+                            {assigneeLabel[0]?.toUpperCase() ?? "?"}
                           </div>
-                        )}
+                          {assigneeLabel}
+                        </div>
                         <span>
                           {task.updatedAt
                             ? format(new Date(task.updatedAt), "MMM d, h:mm a")

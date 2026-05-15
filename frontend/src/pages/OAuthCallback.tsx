@@ -3,6 +3,10 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import type { AuthResponse } from "../types/authDtos";
 import toast from "react-hot-toast";
+import {
+  AUTH_NEXT_STORAGE_KEY,
+  isSafeInternalReturnPath,
+} from "../utils/safeReturnPath";
 
 /**
  * Landing page for Google OAuth2 redirect.
@@ -44,7 +48,11 @@ const OAuthCallback = () => {
       // exceeding nginx's large_client_header_buffers limit (default 4×8KB)
       Promise.all([refreshUser(), refreshWorkspaces()]).catch(() => {});
 
-      navigate("/", { replace: true });
+      const raw = sessionStorage.getItem(AUTH_NEXT_STORAGE_KEY);
+      sessionStorage.removeItem(AUTH_NEXT_STORAGE_KEY);
+      const target =
+        raw && isSafeInternalReturnPath(raw) ? raw : "/";
+      navigate(target, { replace: true });
     } catch {
       toast.error("OAuth login failed — could not parse response.");
       navigate("/auth", { replace: true });

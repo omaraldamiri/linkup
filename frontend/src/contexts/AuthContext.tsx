@@ -61,25 +61,38 @@ const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [workspaces, setWorkspaces] = useState<WorkspaceDTO[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Bootstrap: read persisted data from localStorage — no API calls needed
+  // Bootstrap: hydrate from localStorage, then refresh user for server-side flags (e.g. systemAdmin)
   useEffect(() => {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+    const init = async () => {
+      const token = localStorage.getItem(TOKEN_KEY);
+      if (!token) {
+        setLoading(false);
+        return;
+      }
 
-    try {
-      const storedUser = localStorage.getItem(USER_KEY);
-      const storedWorkspaces = localStorage.getItem(WORKSPACES_KEY);
-      if (storedUser) setUser(JSON.parse(storedUser));
-      if (storedWorkspaces) setWorkspaces(JSON.parse(storedWorkspaces));
-    } catch {
-      // Corrupted storage — clean up
-      _clearStorage();
-    } finally {
-      setLoading(false);
-    }
+      try {
+        const storedUser = localStorage.getItem(USER_KEY);
+        const storedWorkspaces = localStorage.getItem(WORKSPACES_KEY);
+        if (storedUser) setUser(JSON.parse(storedUser));
+        if (storedWorkspaces) setWorkspaces(JSON.parse(storedWorkspaces));
+      } catch {
+        _clearStorage();
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const freshUser = await userService.getMe();
+        localStorage.setItem(USER_KEY, JSON.stringify(freshUser));
+        setUser(freshUser);
+      } catch {
+        // Non-fatal: keep stored user if refresh fails
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void init();
   }, []);
 
   // ── Private helpers ────────────────────────────────────────────────────────

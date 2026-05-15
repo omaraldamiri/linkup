@@ -5,6 +5,7 @@ import type {
   EditingRoleDTO,
   AddingMemberDTO,
   WorkspaceDTO,
+  PendingWorkspaceInvitationDTO,
 } from "../types/workspaceDtos";
 
 /** GET /workspaces/my — full workspace list for the authenticated user, including imageUrl */
@@ -31,9 +32,39 @@ export const createWorkspace = async (
   return res.data;
 };
 
-/** POST /workspaces/adduser */
+/** POST /workspaces/adduser — sends email invitation */
 export const inviteMember = async (data: AddingMemberDTO): Promise<string> => {
   const res = await api.post<string>("/workspaces/adduser", data);
+  return res.data;
+};
+
+/** GET /workspaces/pending-invitations/{workspaceId} — owner only */
+export const getPendingInvitations = async (
+  workspaceId: string,
+): Promise<PendingWorkspaceInvitationDTO[]> => {
+  const res = await api.get<PendingWorkspaceInvitationDTO[]>(
+    `/workspaces/pending-invitations/${workspaceId}`,
+  );
+  return res.data;
+};
+
+/** POST /workspaces/invitations/accept */
+export const acceptWorkspaceInvitation = async (
+  token: string,
+): Promise<string> => {
+  const res = await api.post<string>("/workspaces/invitations/accept", {
+    token,
+  });
+  return res.data;
+};
+
+/** DELETE /workspaces/invitations/{invitationId} — owner only */
+export const revokeWorkspaceInvitation = async (
+  invitationId: string,
+): Promise<string> => {
+  const res = await api.delete<string>(
+    `/workspaces/invitations/${invitationId}`,
+  );
   return res.data;
 };
 

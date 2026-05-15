@@ -1,6 +1,7 @@
 package com.softwareproject.LinkUp.controllers;
 
 import com.softwareproject.LinkUp.dtos.EditingProjectRoleDTO;
+import com.softwareproject.LinkUp.dtos.ProjectMemberRoleDTO;
 import com.softwareproject.LinkUp.dtos.ProjectDTO;
 import com.softwareproject.LinkUp.dtos.UpdateProjectDTO;
 import com.softwareproject.LinkUp.dtos.UserDTO;
@@ -76,11 +77,11 @@ public class ProjectController {
                 (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal()));
     }
 
+
     @GetMapping("/getmembers/{projectId}")
-    public ResponseEntity<List<UserDTO>> getProjectMembers(@PathVariable String projectId) {
+    public ResponseEntity<List<ProjectMemberRoleDTO>> getProjectMembers(@PathVariable String projectId) {
         return ResponseEntity.ok(projectService.getProjectMembers(projectId,
                 (User) SecurityContextHolder.getContext().getAuthentication().getPrincipal()));
     }
-
 
 }

@@ -6,6 +6,7 @@ import com.softwareproject.LinkUp.dtos.WorkspaceDTO;
 import com.softwareproject.LinkUp.entities.User;
 import com.softwareproject.LinkUp.repos.UserRepository;
 import com.softwareproject.LinkUp.repos.WorkspaceRepository;
+import com.softwareproject.LinkUp.services.AdminBootstrapService;
 import com.softwareproject.LinkUp.services.WorkspaceService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
@@ -33,6 +34,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
     private final WorkspaceService workspaceService;
     private final WorkspaceRepository workspaceRepository;
     private final ObjectMapper objectMapper;
+    private final AdminBootstrapService adminBootstrapService;
 
     @Value("${FRONTEND_URL:http://localhost:3000}")
     private String frontendUrl;
@@ -62,6 +64,8 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
             return userRepository.save(newUser);
         });
 
+        adminBootstrapService.promoteIfAdminEmail(user);
+
         // Strip image fields before URL-encoding: base64 data URLs can be hundreds of KB.
         // Embedding them in a Location header exceeds nginx's large_client_header_buffers
         // limit (default 4×8KB), causing HTTP 500 on the redirect.
@@ -84,6 +88,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
                 .name(user.getName())
                 .email(user.getEmail())
                 .createdAt(user.getCreatedAt())
+                .systemAdmin(Boolean.TRUE.equals(user.getSystemAdmin()))
                 .build();
 
         AuthResponse authResponse = AuthResponse.builder()

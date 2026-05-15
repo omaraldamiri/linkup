@@ -40,6 +40,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 filterChain.doFilter(request, response);
                 return;
             }
+            if(!user.isEnabled()) {
+                filterChain.doFilter(request, response);
+                return;
+            }
             if(jwtService.isTokenValid(user,jwtToken)){
                 UsernamePasswordAuthenticationToken authToken=new UsernamePasswordAuthenticationToken(
                         user

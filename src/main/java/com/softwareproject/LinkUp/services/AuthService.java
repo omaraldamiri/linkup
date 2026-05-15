@@ -27,6 +27,8 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceService workspaceService;
+    private final AdminBootstrapService adminBootstrapService;
+
     public AuthResponse registerUser(RegisterDTO registerDTO){
         if(userRepository.findByEmail(registerDTO.getEmail()).isPresent()){
             throw new EmailAlreadyExistsException("Email already exists! Try another one");
@@ -40,6 +42,7 @@ public class AuthService {
                 .image(registerDTO.getImageUrl())
                 .oAuth2User(false).googleId(null).build();
         userRepository.save(user);
+        adminBootstrapService.promoteIfAdminEmail(user);
 
         UserDTO userDTO=UserDTO.builder()
                 .id(user.getId())
@@ -47,6 +50,7 @@ public class AuthService {
                 .name(user.getName())
                 .email(user.getEmail())
                 .createdAt(user.getCreatedAt())
+                .systemAdmin(Boolean.TRUE.equals(user.getSystemAdmin()))
                 .build();
 
 
@@ -56,6 +60,7 @@ public class AuthService {
     public AuthResponse     authUser(LoginDTO loginDTO){
         authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(loginDTO.getEmail(), loginDTO.getPassword()));
                 User user=userRepository.findByEmail(loginDTO.getEmail()).orElseThrow(()->new RuntimeException("User Not Found"));
+                adminBootstrapService.promoteIfAdminEmail(user);
 
                 List<Workspace> workspaceList=workspaceRepository.findByUser(user);
 
@@ -67,6 +72,7 @@ public class AuthService {
                 .name(user.getName())
                 .email(user.getEmail())
                 .createdAt(user.getCreatedAt())
+                .systemAdmin(Boolean.TRUE.equals(user.getSystemAdmin()))
                 .build();
 
 

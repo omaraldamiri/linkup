@@ -10,6 +10,8 @@ import {
   Crown,
   UserPlus,
   Plus,
+  Mail,
+  Clock,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -36,15 +38,13 @@ import {
 } from "@/components/ui/dialog";
 import useAuth from "../hooks/useAuth";
 import useWorkspace from "../hooks/useWorkspace";
+import useProject from "../hooks/useProject";
+import useTask from "../hooks/useTask";
 import InviteMemberDialog from "../components/InviteMemberDialog";
 import CreateWorkspaceDialog from "../components/CreateWorkspaceDialog";
 import type { UserRoleDTO, WorkspaceRole } from "../types/workspaceDtos";
 import toast from "react-hot-toast";
 import { useNavigate } from "react-router-dom";
-
-// Mock until projects/tasks domains are implemented
-const MOCK_ACTIVE_PROJECTS = 4;
-const MOCK_TOTAL_TASKS = 23;
 
 const RoleBadge = ({ role }: { role: WorkspaceRole }) => {
   const styles: Record<WorkspaceRole, string> = {
@@ -68,13 +68,30 @@ const Team = () => {
     currentWorkspace,
     members,
     membersLoading,
+    pendingInvitations,
+    pendingInvitationsLoading,
     removeMember,
     editMemberRole,
     deleteWorkspace,
+    revokeWorkspaceInvitation,
   } = useWorkspace();
+
+  // Real data from providers
+  const { projects, projectsLoading } = useProject();
+  const { workspaceTaskCount, workspaceTaskCountLoading } = useTask();
+
+  // Active projects scoped to current workspace (projects is already workspace-filtered)
+  const activeProjectCount = projects.filter(
+    (p) => p.projectStatus === "ACTIVE",
+  ).length;
+
+  const taskCount = workspaceTaskCount;
 
   const [searchTerm, setSearchTerm] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [revokingInvitationId, setRevokingInvitationId] = useState<
+    string | null
+  >(null);
 
   // Remove member
   const [removeTarget, setRemoveTarget] = useState<UserRoleDTO | null>(null);
@@ -155,6 +172,18 @@ const Team = () => {
     setEditTarget(member);
   };
 
+  const handleRevokeInvitation = async (invitationId: string) => {
+    setRevokingInvitationId(invitationId);
+    try {
+      await revokeWorkspaceInvitation(invitationId);
+      toast.success("Invitation cancelled.");
+    } catch {
+      toast.error("Failed to cancel invitation.");
+    } finally {
+      setRevokingInvitationId(null);
+    }
+  };
+
   if (workspaces.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-24 max-w-6xl mx-auto">
@@ -192,12 +221,14 @@ const Team = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setInviteOpen(true)}
-            className="flex items-center px-4 py-2 rounded text-sm bg-gradient-to-br from-blue-500 to-blue-600 hover:opacity-90 text-white transition gap-2"
-          >
-            <UserPlus className="w-4 h-4" /> Add Member
-          </button>
+          {isOwner && (
+            <button
+              onClick={() => setInviteOpen(true)}
+              className="flex items-center px-4 py-2 rounded text-sm bg-gradient-to-br from-blue-500 to-blue-600 hover:opacity-90 text-white transition gap-2"
+            >
+              <UserPlus className="w-4 h-4" /> Invite member
+            </button>
+          )}
           {/* Delete workspace — owner only */}
           {isOwner && (
             <button
@@ -212,6 +243,7 @@ const Team = () => {
 
       {/* Stats Cards */}
       <div className="flex flex-wrap gap-4">
+        {/* Total Members */}
         <div className="max-sm:w-full dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50 border border-gray-300 dark:border-zinc-800 rounded-lg p-6">
           <div className="flex items-center justify-between gap-8 md:gap-22">
             <div>
@@ -228,6 +260,7 @@ const Team = () => {
           </div>
         </div>
 
+        {/* Active Projects — workspace-scoped, real data */}
         <div className="max-sm:w-full dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50 border border-gray-300 dark:border-zinc-800 rounded-lg p-6">
           <div className="flex items-center justify-between gap-8 md:gap-22">
             <div>
@@ -235,7 +268,7 @@ const Team = () => {
                 Active Projects
               </p>
               <p className="text-xl font-bold text-gray-900 dark:text-white">
-                {MOCK_ACTIVE_PROJECTS}
+                {projectsLoading ? "—" : activeProjectCount}
               </p>
             </div>
             <div className="p-3 rounded-xl bg-emerald-100 dark:bg-emerald-500/10">
@@ -244,14 +277,17 @@ const Team = () => {
           </div>
         </div>
 
+        {/* Tasks — total across your projects in this workspace */}
         <div className="max-sm:w-full dark:bg-gradient-to-br dark:from-zinc-800/70 dark:to-zinc-900/50 border border-gray-300 dark:border-zinc-800 rounded-lg p-6">
           <div className="flex items-center justify-between gap-8 md:gap-22">
             <div>
-              <p className="text-sm text-gray-500 dark:text-zinc-400">
-                Total Tasks
-              </p>
+              <p className="text-sm text-gray-500 dark:text-zinc-400">Tasks</p>
               <p className="text-xl font-bold text-gray-900 dark:text-white">
-                {MOCK_TOTAL_TASKS}
+                {!currentWorkspace
+                  ? "—"
+                  : workspaceTaskCountLoading
+                    ? "—"
+                    : taskCount}
               </p>
             </div>
             <div className="p-3 rounded-xl bg-purple-100 dark:bg-purple-500/10">
@@ -271,6 +307,87 @@ const Team = () => {
           className="pl-8 w-full text-sm rounded-md border border-gray-300 dark:border-zinc-800 bg-white dark:bg-transparent text-gray-900 dark:text-white placeholder-gray-400 py-2 focus:outline-none focus:border-blue-500"
         />
       </div>
+
+      {/* Pending invitations — owner only */}
+      {isOwner && currentWorkspace && (
+        <div className="rounded-lg border border-amber-200 dark:border-amber-900/40 bg-amber-50/90 dark:bg-amber-950/25 p-4 sm:p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <Mail className="size-4 text-amber-700 dark:text-amber-400 shrink-0" />
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">
+              Pending invitations
+            </h2>
+          </div>
+          {pendingInvitationsLoading ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="size-5 text-amber-600 animate-spin" />
+            </div>
+          ) : pendingInvitations.length === 0 ? (
+            <p className="text-sm text-gray-600 dark:text-zinc-400">
+              No pending invitations. People you invite appear here until they
+              accept the link in their email.
+            </p>
+          ) : (
+            <div className="overflow-x-auto rounded-md border border-amber-200/90 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/40">
+              <table className="min-w-full text-sm">
+                <thead className="bg-amber-100/80 dark:bg-zinc-900/80">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700 dark:text-zinc-300">
+                      Name
+                    </th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700 dark:text-zinc-300">
+                      Email
+                    </th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700 dark:text-zinc-300">
+                      Role
+                    </th>
+                    <th className="px-4 py-2 text-left font-medium text-gray-700 dark:text-zinc-300">
+                      <span className="inline-flex items-center gap-1">
+                        <Clock className="size-3.5 opacity-70" />
+                        Expires
+                      </span>
+                    </th>
+                    <th className="px-4 py-2 text-right font-medium text-gray-700 dark:text-zinc-300">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-amber-100 dark:divide-zinc-800">
+                  {pendingInvitations.map((inv) => (
+                    <tr key={inv.id}>
+                      <td className="px-4 py-2 text-gray-900 dark:text-white whitespace-nowrap">
+                        {inv.inviteeName}
+                      </td>
+                      <td className="px-4 py-2 text-gray-600 dark:text-zinc-400 whitespace-nowrap">
+                        {inv.inviteeEmail}
+                      </td>
+                      <td className="px-4 py-2">
+                        <RoleBadge role={inv.role} />
+                      </td>
+                      <td className="px-4 py-2 text-gray-600 dark:text-zinc-400 whitespace-nowrap text-xs sm:text-sm">
+                        {new Date(inv.expiresAt).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleRevokeInvitation(inv.id)}
+                          disabled={revokingInvitationId === inv.id}
+                          className="text-xs font-medium text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
+                        >
+                          {revokingInvitationId === inv.id ? (
+                            <Loader2 className="inline size-3.5 animate-spin" />
+                          ) : (
+                            "Revoke"
+                          )}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Members Table */}
       <div className="w-full">

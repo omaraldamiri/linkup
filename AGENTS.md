@@ -43,6 +43,10 @@ linkup/                          ← repo root (Spring Boot lives here)
       contexts/
         AuthContext.tsx          ← Auth provider
         WorkspaceContext.tsx     ← Workspace provider
+        UserContext.tsx          ← User mutation provider
+        ProjectContext.tsx       ← Project provider (scoped to current workspace)
+        TaskContext.tsx          ← Task provider (scoped to current project)
+        CommentContext.tsx       ← Comment provider (scoped to current task)
       components/
         Navbar.tsx
         Sidebar.tsx
@@ -50,9 +54,20 @@ linkup/                          ← repo root (Spring Boot lives here)
         CreateWorkspaceDialog.tsx
         InviteMemberDialog.tsx
         UserProfileDialog.tsx
+        ProjectTasks.tsx         ← Task list table + filters + role-gated actions
+        ProjectSettings.tsx      ← Leader-only project edit + member management
+        ProjectAnalytics.tsx
+        ProjectCalendar.tsx
+        ProjectsSidebar.tsx      ← Sidebar project nav (real data, Members tab)
+        CreateTaskDialog.tsx     ← Leader-only task creation dialog
+        AddProjectMember.tsx
       hooks/
         useAuth.ts
         useWorkspace.ts
+        useUser.ts
+        useProject.ts
+        useTask.ts
+        useComment.ts
         useRedux.ts              ← typed useAppDispatch / useAppSelector
       pages/
         Auth.tsx
@@ -61,17 +76,23 @@ linkup/                          ← repo root (Spring Boot lives here)
         Projects.tsx
         Team.tsx
         ProjectDetails.tsx
-        TaskDetails.tsx
+        TaskDetails.tsx          ← Task info + comment panel
         OAuthCallback.tsx
       services/
         api.ts
         authService.ts
         userService.ts
         workspaceService.ts
+        projectService.ts
+        taskService.ts
+        commentService.ts
       types/
         authDtos.ts
         userDtos.ts
         workspaceDtos.ts
+        projectDtos.ts
+        taskDtos.ts
+        commentDtos.ts
       features/
         themeSlice.ts            ← Redux slice (only Redux usage in project)
       App.tsx
@@ -99,7 +120,7 @@ Component → Context Action → Service Layer → Backend API → Context State
 **Rules that must never be broken:**
 
 - Components NEVER import from `services/` directly
-- Components ONLY call context actions (`useAuth()`, `useWorkspace()`)
+- Components ONLY call context actions (`useAuth()`, `useWorkspace()`, `useProject()`, `useTask()`, `useComment()`)
 - Context actions call services, handle responses, update state
 - Services are pure HTTP wrappers — no state, no side effects
 
@@ -186,6 +207,7 @@ Actions exposed to components:
 - `handleOAuthCallback(token, userDTO, workspaceDTOList)` → applies full AuthResponse (same as login/register)
 - `refreshUser()` → calls `GET /users/me`, updates `user` in state + localStorage; used after OAuth callback to re-hydrate stripped image field
 - `refreshWorkspaces()` → calls `GET /workspaces/my`, updates `workspaces` in state + localStorage; used after OAuth callback to re-hydrate stripped imageUrl fields
+- `updateWorkspaces(updated)` → canonical way to mutate workspace list from outside AuthContext; writes to both state and localStorage atomically
 - `logout()` → clears localStorage + state
 - `setUser` / `setWorkspaces` → escape hatches for optimistic updates
 
@@ -204,16 +226,83 @@ Actions:
 
 **Important:** `WorkspaceContext` has a `defaultValue` (not null) to prevent crashes during transitional renders between login and first render of protected routes.
 
-### 5.4 Context Tree (main.tsx)
+### 5.4 UserContext
+
+Owns: `saving`, `deleting`
+
+Actions:
+
+- `updateUser(data)` → PATCH `/users/me`, propagates partial update up to AuthContext via `onUserChange` prop
+- `deleteUser()` → DELETE `/users/me`, calls `onUserDelete` prop which triggers AuthContext logout
+
+Receives `onUserChange` and `onUserDelete` callbacks as props from `UserBridge` in `main.tsx`. This is how it writes back to AuthContext without a circular dependency.
+
+### 5.5 ProjectContext
+
+Owns: `projects`, `currentProject`, `currentUserRole`, `projectMembers`, `projectsLoading`, `membersLoading`
+
+Actions:
+
+- `selectProject(id)` → sets currentProject from loaded list
+- `createProject(data)` → POST + appends to list + auto-selects new project
+- `editProject(id, data)` → PATCH + re-fetches project details
+- `changeProjectStatus(id, status)` → PATCH + optimistic update
+- `deleteProject(id)` → DELETE + removes from list + selects next project
+- `addProjectMember(projectId, email)` → POST + re-fetches members
+- `removeProjectMember(projectId, userId)` → DELETE + optimistic removal
+- `editProjectMemberRole(data)` → PATCH + optimistic role update
+- `refreshProjects()` → re-fetches full project list
+
+Receives `workspaceId: string | null` as prop from `ProjectBridge`. Fetches all user projects on mount, then filters in-memory by `workspaceId` — so `projects` is always the workspace-scoped view.
+
+`currentUserRole` is derived directly from `currentProject.currentUserRole` — no separate state.
+
+### 5.6 TaskContext
+
+Owns: `tasks`, `currentTask`, `tasksLoading`
+
+Actions:
+
+- `selectTask(id)` → sets currentTask from loaded list
+- `createTask(projectId, data)` → POST + appends to list (leader only by convention — enforced in UI)
+- `deleteTask(taskId)` → DELETE + removes from list + clears currentTask if it was selected (leader only)
+- `updateTaskStatus(taskId, status)` → PATCH + optimistic update (all members)
+- `changeAssignee(taskId, email)` → PATCH + optimistic update (leader only)
+- `refreshTasks()` → re-fetches task list for current project
+
+Receives `projectId: string | null` as prop from `TaskBridge`. Auto-fetches tasks when `projectId` changes. Clears tasks and currentTask when project changes.
+
+### 5.7 CommentContext
+
+Owns: `comments`, `commentsLoading`
+
+Actions:
+
+- `createComment(content)` → POST + appends returned DTO to list (all members)
+
+Receives `taskId: string | null` as prop from `CommentBridge`. Auto-fetches comments when `taskId` changes. Does not expose `deleteComment` — that endpoint exists on the backend but is not implemented in the frontend.
+
+### 5.8 Context Tree (main.tsx)
 
 ```
 AuthProvider
-  └── WorkspaceBridge (reads workspaces from AuthContext, passes as prop)
-        └── WorkspaceProvider
-              └── App
+  └── WorkspaceBridge → WorkspaceProvider
+        └── UserBridge → UserProvider
+              └── ProjectBridge → ProjectProvider
+                    └── TaskBridge → TaskProvider
+                          └── CommentBridge → CommentProvider
+                                └── App
 ```
 
-`WorkspaceBridge` is the glue component that feeds `AuthContext.workspaces` into `WorkspaceProvider` as props without creating a circular dependency.
+Each Bridge component sits _between_ two providers: it reads from the outer context and passes the current ID as a prop into the inner provider. This avoids circular dependencies and keeps each provider's scope clearly defined.
+
+| Bridge          | Reads from                        | Feeds into        |
+| --------------- | --------------------------------- | ----------------- |
+| WorkspaceBridge | AuthContext.workspaces            | WorkspaceProvider |
+| UserBridge      | AuthContext (logout, setUser)     | UserProvider      |
+| ProjectBridge   | WorkspaceContext.currentWorkspace | ProjectProvider   |
+| TaskBridge      | ProjectContext.currentProject     | TaskProvider      |
+| CommentBridge   | TaskContext.currentTask           | CommentProvider   |
 
 ---
 
@@ -247,6 +336,46 @@ Base URL: `http://localhost:8080`
 | DELETE | `/workspaces/removeuser/{workspaceId}/{userId}` | path vars         | `String`             |
 | PATCH  | `/workspaces/editrole`                          | `EditingRoleDTO`  | `String`             |
 | DELETE | `/workspaces/delete/{workspaceId}`              | path var          | `String`             |
+
+### Project Endpoints (JWT required)
+
+| Method | Path                                        | Body/Params             | Response                   |
+| ------ | ------------------------------------------- | ----------------------- | -------------------------- |
+| POST   | `/projects/create`                          | `ProjectDTO`            | `ProjectDTO`               |
+| GET    | `/projects/getprojects`                     | —                       | `List<ProjectDTO>`         |
+| GET    | `/projects/details/{projectId}`             | path var                | `ProjectDTO`               |
+| PATCH  | `/projects/editproject/{projectId}`         | `UpdateProjectDTO`      | `String`                   |
+| PATCH  | `/projects/changestatus/{projectId}`        | `?status=STATUS`        | `String`                   |
+| DELETE | `/projects/delete/{projectId}`              | path var                | `String`                   |
+| POST   | `/projects/adduser/{projectId}`             | `?userEmail=EMAIL`      | `String`                   |
+| DELETE | `/projects/deleteuser/{projectId}/{userId}` | path vars               | `String`                   |
+| PATCH  | `/projects/editrole`                        | `EditingProjectRoleDTO` | `String`                   |
+| GET    | `/projects/getmembers/{projectId}`          | path var                | `List<UserDTO>` ⚠️ see §10 |
+
+### Task Endpoints (JWT required)
+
+| Method | Path                             | Body/Params            | Response        |
+| ------ | -------------------------------- | ---------------------- | --------------- |
+| POST   | `/tasks/create/{projectId}`      | `TaskDTO` (body)       | `TaskDTO`       |
+| GET    | `/tasks/getall/{projectId}`      | path var               | `List<TaskDTO>` |
+| GET    | `/tasks/get/{taskId}`            | path var               | `TaskDTO`       |
+| DELETE | `/tasks/delete/{taskId}`         | path var               | `String`        |
+| PATCH  | `/tasks/updatestatus/{taskId}`   | `?status=STATUS`       | `String`        |
+| PATCH  | `/tasks/changeassignee/{taskId}` | `?assigneeEmail=EMAIL` | `String`        |
+| GET    | `/tasks/count/workspace/{workspaceId}` | path var | `number` |
+| GET    | `/tasks/workspace/{workspaceId}` | path var | `List<TaskDTO>` |
+
+> **Note on task params:** `updatestatus` and `changeassignee` both use `@RequestParam` — send as query params, not body. Sending in body silently fails.
+
+### Comment Endpoints (JWT required)
+
+| Method | Path                           | Body/Params     | Response            |
+| ------ | ------------------------------ | --------------- | ------------------- |
+| POST   | `/comments/create/{taskId}`    | `?content=TEXT` | `CommentDTO`        |
+| GET    | `/comments/get/{taskId}`       | path var        | `List<CommentDTO>`  |
+| DELETE | `/comments/delete/{commentId}` | path var        | `String` (not impl) |
+
+> **Note on comment create:** `content` is `@RequestParam` — send as query param `?content=...`, not in the request body.
 
 ### OAuth2
 
@@ -330,6 +459,102 @@ interface EditingRoleDTO {
 }
 ```
 
+### projectDtos.ts
+
+```typescript
+type ProjectPriority = "LOW" | "MEDIUM" | "HIGH";
+type ProjectStatus =
+  | "ACTIVE"
+  | "PLANNING"
+  | "COMPLETED"
+  | "ON_HOLD"
+  | "CANCELLED";
+type ProjectRole = "LEADER" | "VIEWER";
+
+interface ProjectDTO {
+  id: string;
+  name: string;
+  description: string | null;
+  projectPriority: ProjectPriority;
+  projectStatus: ProjectStatus;
+  startDate: string | null;
+  endDate: string | null;
+  progress: number | null;
+  createdAt: string | null;
+  workspaceId: string;
+  addedEmails: string[] | null;
+  currentUserRole: ProjectRole | null; // the authenticated user's role in this project
+}
+interface ProjectMemberRoleDTO {
+  userDTO: UserDTO;
+  role: ProjectRole;
+}
+interface CreateProjectPayload {
+  name: string;
+  workspaceId: string;
+  description?: string;
+  projectPriority?: ProjectPriority;
+  startDate?: string;
+  endDate?: string;
+  addedEmails?: string[];
+}
+interface UpdateProjectPayload {
+  name?: string;
+  description?: string;
+  projectPriority?: ProjectPriority;
+  projectStatus?: ProjectStatus;
+  startDate?: string;
+  endDate?: string;
+  progress?: number;
+}
+interface EditingProjectRoleDTO {
+  userId: string;
+  projectId: string;
+  newRole: ProjectRole;
+}
+```
+
+### taskDtos.ts
+
+```typescript
+type TaskPriority = "LOW" | "MEDIUM" | "HIGH";
+type TaskStatus = "TODO" | "IN_PROGRESS" | "DONE";
+type TaskType = "TASK" | "BUG" | "FEATURE" | "IMPROVEMENT" | "OTHER";
+
+interface TaskDTO {
+  id: string; // requires backend fix — see §10
+  title: string;
+  description: string | null;
+  taskStatus: TaskStatus;
+  taskPriority: TaskPriority;
+  taskType: TaskType;
+  dueTime: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  assigneeEmail: string;
+  projectId: string;
+}
+interface CreateTaskPayload {
+  title: string;
+  assigneeEmail: string;
+  description?: string;
+  taskPriority?: TaskPriority;
+  taskType?: TaskType;
+  dueTime?: string; // ISO-8601: "2026-06-30T00:00:00"
+}
+```
+
+### commentDtos.ts
+
+```typescript
+interface CommentDTO {
+  content: string;
+  userEmail: string;
+  taskId: string;
+  createdAt: string | null; // ISO-8601; see §10 for date format warning
+}
+```
+
 ---
 
 ## 8. Completed Domains
@@ -352,6 +577,36 @@ interface EditingRoleDTO {
 - Edit member role (owner only)
 - Delete workspace (owner only)
 
+### ✅ Project Domain
+
+- Create project (with optional batch member add via `addedEmails`)
+- List projects scoped to current workspace (fetched from `GET /projects/getprojects`, filtered in-memory by workspaceId)
+- Select project (ProjectContext + URL param sync in ProjectDetails)
+- Edit project details (name, description, priority, status, dates, progress)
+- Change project status (optimistic update)
+- Delete project
+- Add project member by email
+- Remove project member (leader only)
+- Edit project member role (leader only)
+- View members tab (leader: in Settings panel; viewer: in Members tab on project detail page)
+
+### ✅ Task Domain
+
+- Create task (leader only — gated in CreateTaskDialog and New Task button)
+- List tasks for current project (auto-fetched when project changes)
+- View task details (TaskDetails page)
+- Delete task (leader only — trash icon in TaskDetails)
+- Update task status (all members — dropdown in ProjectTasks table)
+- Change task assignee (leader only — dropdown in Assignee column of ProjectTasks)
+
+### ✅ Comment Domain
+
+- Post comment on a task (all members)
+- Get all comments for current task (auto-fetched when task changes via CommentBridge)
+- Own comments right-aligned, others left-aligned (keyed off `comment.userEmail === user.email`)
+- Ctrl/Cmd+Enter shortcut to submit
+- Auto-scroll to latest comment on new post
+
 ### ✅ Infrastructure
 
 - Docker Compose (MySQL + Spring Boot + React/nginx)
@@ -363,57 +618,9 @@ interface EditingRoleDTO {
 
 ## 9. Pending / Not Yet Implemented
 
-These are known incomplete items — do not implement without explicit instruction:
-
-- **Projects domain** — not started on backend
-- **Tasks domain** — not started on backend
-- **Email invite system** — backend not built; invite button is disabled in UI
-- **Active Projects / Total Tasks counts in Team page** — currently hardcoded mock values (`MOCK_ACTIVE_PROJECTS = 4`, `MOCK_TOTAL_TASKS = 23`); replace when projects/tasks domains are implemented
-- **`POST /workspaces/create` returns `WorkspaceDTO`** — backend was updated to return DTO; verify this is deployed
-
 ---
 
-## 10. Known Issues & Decisions
-
-### Issue: OAuth2 redirect URL exceeds nginx header buffer limit
-
-**Problem:** After a Google OAuth user updated their profile image or workspace image (stored as base64 MEDIUMTEXT, up to 16MB), `OAuth2SuccessHandler` was serializing the full `AuthResponse` including those base64 blobs, base64-encoding the whole thing, and embedding it in the `Location` redirect header. nginx's default `large_client_header_buffers` is 4×8KB (32KB total). Any image larger than ~24KB (after double base64 encoding) caused an HTTP 500 on the redirect, permanently blocking the user from signing in again via Google.
-
-**Fix applied (two parts):**
-
-_Backend — `OAuth2SuccessHandler.java`:_ `userDTO.image` is now set to `null` and each `WorkspaceDTO.imageUrl` is set to `null` before serialization. The redirect URL stays small regardless of what is stored in the DB.
-
-_Frontend — `OAuthCallback.tsx`:_ After `handleOAuthCallback()` applies the token and minimal data, `refreshUser()` and `refreshWorkspaces()` are fired in parallel (`Promise.all`) to re-hydrate the stripped image fields via `GET /users/me` and `GET /workspaces/my`. Both calls are fire-and-forget — the user is authenticated and navigated to `/` regardless of whether they succeed.
-
-### Issue: `UserService.updateUser` email check threw on own email
-
-**Problem:** `userRepository.findByEmail(updatedUserDTO.getEmail()).isPresent()` would find the current user's own record and throw `EmailAlreadyExistsException`, making it impossible to submit a profile update that included the user's own current email. Also called `findByEmail(null)` when email was not in the update payload, which has undefined JPA behavior.
-
-**Fix applied:** The check now only runs when `updatedUserDTO.getEmail() != null`, and uses `.ifPresent()` with an ID comparison to exclude the current user:
-
-```java
-if (updatedUserDTO.getEmail() != null) {
-    userRepository.findByEmail(updatedUserDTO.getEmail()).ifPresent(existing -> {
-        if (!existing.getId().equals(user.getId()))
-            throw new EmailAlreadyExistsException("Email trying to update already exists");
-    });
-}
-```
-
-### Issue: WorkspaceContext null crash on login
-
-**Problem:** After login, `navigate("/")` fires before `WorkspaceContext` propagates new workspaces, causing `useWorkspace()` to return null mid-render.
-**Fix applied:** `WorkspaceContext` uses a `defaultValue` object (not null) so destructuring never crashes.
-
-### Issue: lightningcss Windows binary in Docker
-
-**Problem:** `npm ci` inside Docker was using Windows-generated `package-lock.json` which locked `lightningcss-win32` binary.
-**Fix applied:** Frontend Dockerfile uses `RUN rm -f package-lock.json && npm install` to force Linux binary resolution.
-
-### Issue: 401 interceptor swallowing login errors
-
-**Problem:** Failed login returned 401, triggering redirect to `/auth` before toast could fire.
-**Fix applied:** Interceptor only redirects if a `token` exists in localStorage (expired session), not on fresh 401s.
+## 10. Decisions
 
 ### Decision: Redux kept for theme only
 
@@ -423,20 +630,17 @@ Redux is intentionally not removed. `themeSlice` uses localStorage to persist da
 
 `workspaceSlice` was removed from Redux entirely. Workspace state lives in `WorkspaceContext`. The Redux store only has `theme` reducer.
 
-### Issue: `UsernameNotFoundException` in `inviteMember` triggered 401 redirect
-
-**Problem:** `WorkspaceService.inviteMember` threw `UsernameNotFoundException` (Spring Security exception) when a user email wasn't found. Spring returns 401 for this, and the frontend axios interceptor (seeing a token exists) redirects to `/auth`.
-**Fix applied:** Changed to throw `UserNotFoundException` (custom exception, handled by `GlobalExceptionHandler` returning 400), so the error is shown as a toast instead of redirecting.
-
-### Issue: `imageUrl` / `image` columns too short for base64 data URLs
-
-**Problem:** `@Column(length = 500)` on `Workspace.imageUrl` and `User.image` couldn't store base64 data URLs (often 100K+ chars) from the file upload inputs.
-**Fix applied:** Changed both to `@Lob @Column(columnDefinition = "MEDIUMTEXT")` in the entity classes.
-**Migration:** If DB already exists, run `ALTER TABLE users MODIFY image MEDIUMTEXT; ALTER TABLE workspaces MODIFY image_url MEDIUMTEXT;` or use `docker compose down -v` to recreate.
-
 ### Decision: Separate hook files from context files
 
-Vite fast-refresh requires files to export either only components or only non-components. `AuthProvider` (component) lives in `AuthContext.tsx`. `useAuth` (hook) lives in `hooks/useAuth.ts`. Same pattern for workspace.
+Vite fast-refresh requires files to export either only components or only non-components. `AuthProvider` (component) lives in `AuthContext.tsx`. `useAuth` (hook) lives in `hooks/useAuth.ts`. Same pattern for all domains: workspace, user, project, task, comment.
+
+### Decision: Settings removed from ProjectsSidebar
+
+The sidebar's last project sub-item was changed from "Settings" to "Members" (linking to `tab=members`). Reason: the sidebar shows all workspace projects without knowing the user's role per project. Showing "Settings" in the sidebar would expose the link to viewers, who would hit an access-denied state on the project page. Leaders access Settings from the project detail page's own tab bar, which correctly gates it by `currentUserRole`.
+
+### Decision: Task status is not sent on create
+
+`CreateTaskPayload` does not include `taskStatus`. The backend always creates tasks as `TODO` and ignores any status field in the create body. The status dropdown was removed from `CreateTaskDialog` to avoid misleading the user.
 
 ---
 
@@ -520,6 +724,7 @@ These Spring Boot files were written or modified during frontend integration —
 - `src/main/java/.../services/UserService.java` — fixed `updateUser` email uniqueness check to exclude the current user and guard against null email input
 - `src/main/java/.../entities/Workspace.java` — changed `imageUrl` from `@Column(length = 500)` to `@Lob @Column(columnDefinition = "MEDIUMTEXT")`
 - `src/main/java/.../entities/User.java` — changed `image` from `@Column(length = 500)` to `@Lob @Column(columnDefinition = "MEDIUMTEXT")`
+- `src/main/java/.../dtos/TaskDTO.java` — added `private String id;` field and `.id(task.getId())` in every builder chain inside `TaskService.java` (`createTask`, `getTask`, `getTasks` stream map); required for all frontend task operations that reference a task by ID
 
 ---
 
@@ -528,7 +733,7 @@ These Spring Boot files were written or modified during frontend integration —
 ```bash
 npx shadcn@latest add dropdown-menu   # Navbar user dropdown
 npx shadcn@latest add dialog          # UserProfileDialog, WorkspaceDropdown create
-npx shadcn@latest add alert-dialog    # Delete confirmations
+npx shadcn@latest add alert-dialog    # Delete confirmations (ProjectSettings)
 npx shadcn@latest add tabs            # UserProfileDialog view/edit tabs
 ```
 

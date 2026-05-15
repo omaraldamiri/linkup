@@ -37,3 +37,13 @@ export interface EditingRoleDTO {
   workSpaceId: string;
   newRole: WorkspaceRole;
 }
+
+/** GET /workspaces/pending-invitations/{workspaceId} — owner only */
+export interface PendingWorkspaceInvitationDTO {
+  id: string;
+  inviteeEmail: string;
+  inviteeName: string;
+  role: WorkspaceRole;
+  createdAt: string;
+  expiresAt: string;
+}

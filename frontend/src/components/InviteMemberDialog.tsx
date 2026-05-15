@@ -29,13 +29,13 @@ const InviteMemberDialog = ({ isDialogOpen, setIsDialogOpen }: Props) => {
         workSpaceId: currentWorkspace.id,
         workSpaceRole: formData.role,
       });
-      toast.success(`${formData.email} added to workspace.`);
+      toast.success(`Invitation sent to ${formData.email}.`);
       setFormData({ email: "", role: "MEMBER" });
       setIsDialogOpen(false);
     } catch (err: unknown) {
       const error = err as { response?: { data?: unknown } };
       const msg = error.response?.data;
-      toast.error(typeof msg === "string" ? msg : "Failed to add member.");
+      toast.error(typeof msg === "string" ? msg : "Failed to send invitation.");
     } finally {
       setIsSubmitting(false);
     }
@@ -49,11 +49,11 @@ const InviteMemberDialog = ({ isDialogOpen, setIsDialogOpen }: Props) => {
         {/* Header */}
         <div className="mb-4">
           <h2 className="text-xl font-bold flex items-center gap-2">
-            <UserPlus className="size-5" /> Add Team Member
+            <UserPlus className="size-5" /> Invite Team Member
           </h2>
           {currentWorkspace && (
             <p className="text-sm text-zinc-500 dark:text-zinc-400 mt-1">
-              Adding to:{" "}
+              Inviting to:{" "}
               <span className="text-blue-600 dark:text-blue-400 font-medium">
                 {currentWorkspace.name}
               </span>
@@ -118,10 +118,10 @@ const InviteMemberDialog = ({ isDialogOpen, setIsDialogOpen }: Props) => {
             >
               {isSubmitting ? (
                 <>
-                  <Loader2 size={14} className="animate-spin" /> Adding...
+                  <Loader2 size={14} className="animate-spin" /> Sending...
                 </>
               ) : (
-                "Add Member"
+                "Send invitation"
               )}
             </button>
           </div>

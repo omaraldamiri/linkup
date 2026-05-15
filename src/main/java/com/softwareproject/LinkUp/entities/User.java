@@ -7,6 +7,7 @@ import org.springframework.data.annotation.CreatedDate;
 import org.springframework.data.annotation.LastModifiedDate;
 import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 
@@ -41,6 +42,12 @@ public class User implements UserDetails {
     private String image;
     @Column(nullable = false)
     private Boolean oAuth2User = false;
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean enabled = true;
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean systemAdmin = false;
     @CreatedDate
     @Column(updatable = false , nullable = false)
     private LocalDateTime createdAt;
@@ -63,6 +70,9 @@ public class User implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
+        if (Boolean.TRUE.equals(systemAdmin)) {
+            return List.of(new SimpleGrantedAuthority("ROLE_ADMIN"));
+        }
         return List.of();
     }
 
@@ -93,6 +103,6 @@ public class User implements UserDetails {
 
     @Override
     public boolean isEnabled() {
-        return true;
+        return Boolean.TRUE.equals(enabled);
     }
 }

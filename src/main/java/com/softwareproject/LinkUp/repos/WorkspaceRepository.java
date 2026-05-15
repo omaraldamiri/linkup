@@ -2,6 +2,8 @@ package com.softwareproject.LinkUp.repos;
 
 import com.softwareproject.LinkUp.entities.User;
 import com.softwareproject.LinkUp.entities.Workspace;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -14,4 +16,12 @@ public interface WorkspaceRepository extends JpaRepository<Workspace,String> {
     Optional<Workspace> findByName(String name);
     @Query("SELECT w FROM Workspace w JOIN w.workspaceMemberList wm WHERE wm.user = :user")
     List<Workspace> findByUser(@Param("user")User user);
+
+    @Query("""
+            SELECT w FROM Workspace w
+            WHERE :q = '' OR LOWER(w.name) LIKE LOWER(CONCAT('%', :q, '%'))
+               OR LOWER(w.slug) LIKE LOWER(CONCAT('%', :q, '%'))
+            ORDER BY w.createdAt DESC
+            """)
+    Page<Workspace> searchWorkspaces(@Param("q") String q, Pageable pageable);
 }

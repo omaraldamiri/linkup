@@ -3,16 +3,22 @@ package com.softwareproject.LinkUp.services;
 import com.softwareproject.LinkUp.dtos.*;
 import com.softwareproject.LinkUp.entities.User;
 import com.softwareproject.LinkUp.entities.Workspace;
+import com.softwareproject.LinkUp.entities.WorkspaceInvitation;
 import com.softwareproject.LinkUp.entities.WorkspaceMember;
 import com.softwareproject.LinkUp.enums.WorkspaceRole;
 import com.softwareproject.LinkUp.exceptions.*;
 import com.softwareproject.LinkUp.repos.UserRepository;
+import com.softwareproject.LinkUp.repos.WorkspaceInvitationRepository;
 import com.softwareproject.LinkUp.repos.WorkspaceMemberRepository;
 import com.softwareproject.LinkUp.repos.WorkspaceRepository;
+import jakarta.mail.MessagingException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -20,7 +26,9 @@ import java.util.stream.Collectors;
 public class WorkspaceService {
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
+    private final WorkspaceInvitationRepository workspaceInvitationRepository;
     private final UserRepository userRepository;
+    private final WorkspaceInviteMailService workspaceInviteMailService;
 
 
     public WorkspaceDTO createWorkSpace(User user, WorkspaceDTO workspaceDTO) {
@@ -56,23 +64,108 @@ public class WorkspaceService {
 }
 
 
-    public void inviteMember(AddingWorkspaceMemberDTO addingMemberDTO,User currentUser){
-        User user=userRepository.findByEmail(addingMemberDTO.getUserEmail()).orElseThrow(()->new UserNotFoundException("User Not found!"));
-        Workspace workspace=workspaceRepository.findById(addingMemberDTO.getWorkSpaceId()).orElseThrow(()->new RuntimeException("Workspace id is invalid"));
-        WorkspaceMember workspaceMember=workspaceMemberRepository.findByUserAndWorkspace(currentUser,workspace).orElseThrow(()->new RuntimeException("Error Happened!"));
-        if(workspaceMember.getRole()!=WorkspaceRole.OWNER)
+    public void inviteMember(AddingWorkspaceMemberDTO addingMemberDTO, User currentUser) {
+        User invitee = userRepository.findByEmail(addingMemberDTO.getUserEmail())
+                .orElseThrow(() -> new UserNotFoundException("User Not found!"));
+        Workspace workspace = workspaceRepository.findById(addingMemberDTO.getWorkSpaceId())
+                .orElseThrow(() -> new RuntimeException("Workspace id is invalid"));
+        WorkspaceMember inviterMembership = workspaceMemberRepository.findByUserAndWorkspace(currentUser, workspace)
+                .orElseThrow(() -> new RuntimeException("Error Happened!"));
+        if (inviterMembership.getRole() != WorkspaceRole.OWNER) {
             throw new UnAuthorizedException("UnAuthorized");
-
-        if(workspaceMemberRepository.findByUserAndWorkspace(user,workspace).isPresent())
+        }
+        if (workspaceMemberRepository.findByUserAndWorkspace(invitee, workspace).isPresent()) {
             throw new UserAlreadyExistsInWorkspace("User already exists in workspace");
+        }
 
+        workspaceInvitationRepository.findByWorkspaceAndInvitedUser(workspace, invitee)
+                .ifPresent(workspaceInvitationRepository::delete);
 
-        WorkspaceMember tempWorkspaceMember=WorkspaceMember.builder()
-                .user(user)
+        String token = UUID.randomUUID().toString();
+        LocalDateTime expiresAt = LocalDateTime.now().plusDays(7);
+
+        WorkspaceInvitation invitation = WorkspaceInvitation.builder()
                 .workspace(workspace)
+                .invitedUser(invitee)
+                .invitedBy(currentUser)
                 .role(addingMemberDTO.getWorkSpaceRole())
+                .token(token)
+                .expiresAt(expiresAt)
                 .build();
-        workspaceMemberRepository.save(tempWorkspaceMember);
+        workspaceInvitationRepository.save(invitation);
+
+        try {
+            workspaceInviteMailService.sendWorkspaceInvite(workspace, invitee, currentUser,
+                    addingMemberDTO.getWorkSpaceRole(), token);
+        } catch (MessagingException e) {
+            workspaceInvitationRepository.delete(invitation);
+            throw new RuntimeException("Could not send invitation email. Check mail configuration.");
+        }
+    }
+
+    @Transactional
+    public String acceptWorkspaceInvitation(AcceptWorkspaceInvitationDTO dto, User currentUser) {
+        if (dto.getToken() == null || dto.getToken().isBlank()) {
+            throw new BadInvitationTokenException("Invitation token is required");
+        }
+        WorkspaceInvitation invitation = workspaceInvitationRepository.findByToken(dto.getToken().trim())
+                .orElseThrow(() -> new BadInvitationTokenException("Invalid or expired invitation"));
+
+        if (invitation.getExpiresAt().isBefore(LocalDateTime.now())) {
+            workspaceInvitationRepository.delete(invitation);
+            throw new InvitationExpiredException("This invitation has expired");
+        }
+        if (!invitation.getInvitedUser().getId().equals(currentUser.getId())) {
+            throw new InvitationForbiddenException("You must be signed in as the invited user to accept");
+        }
+
+        Workspace workspace = invitation.getWorkspace();
+        User invitee = invitation.getInvitedUser();
+        if (workspaceMemberRepository.findByUserAndWorkspace(invitee, workspace).isPresent()) {
+            workspaceInvitationRepository.delete(invitation);
+            throw new UserAlreadyExistsInWorkspace("You are already a member of this workspace");
+        }
+
+        WorkspaceMember member = WorkspaceMember.builder()
+                .user(invitee)
+                .workspace(workspace)
+                .role(invitation.getRole())
+                .build();
+        workspaceMemberRepository.save(member);
+        workspaceInvitationRepository.delete(invitation);
+        return "You have joined workspace \"" + workspace.getName() + "\".";
+    }
+
+    public List<PendingWorkspaceInvitationDTO> getPendingInvitations(String workspaceId, User currentUser) {
+        Workspace workspace = workspaceRepository.findById(workspaceId)
+                .orElseThrow(() -> new RuntimeException("workspace id not found"));
+        WorkspaceMember membership = workspaceMemberRepository.findByUserAndWorkspace(currentUser, workspace)
+                .orElseThrow(() -> new RuntimeException("Error Happened!"));
+        if (membership.getRole() != WorkspaceRole.OWNER) {
+            throw new UnAuthorizedException("UnAuthorized");
+        }
+        return workspaceInvitationRepository.findByWorkspace(workspace).stream()
+                .map(inv -> PendingWorkspaceInvitationDTO.builder()
+                        .id(inv.getId())
+                        .inviteeEmail(inv.getInvitedUser().getEmail())
+                        .inviteeName(inv.getInvitedUser().getName())
+                        .role(inv.getRole())
+                        .createdAt(inv.getCreatedAt())
+                        .expiresAt(inv.getExpiresAt())
+                        .build())
+                .toList();
+    }
+
+    public void revokeWorkspaceInvitation(String invitationId, User currentUser) {
+        WorkspaceInvitation invitation = workspaceInvitationRepository.findById(invitationId)
+                .orElseThrow(() -> new BadInvitationTokenException("Invitation not found"));
+        Workspace workspace = invitation.getWorkspace();
+        WorkspaceMember membership = workspaceMemberRepository.findByUserAndWorkspace(currentUser, workspace)
+                .orElseThrow(() -> new RuntimeException("Error Happened!"));
+        if (membership.getRole() != WorkspaceRole.OWNER) {
+            throw new UnAuthorizedException("UnAuthorized");
+        }
+        workspaceInvitationRepository.delete(invitation);
     }
 
     public void removeMember(String workspaceId , String userId,User currentUser){

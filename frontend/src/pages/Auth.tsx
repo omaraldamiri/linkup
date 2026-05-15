@@ -1,6 +1,11 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import useAuth from "../hooks/useAuth";
 import toast from "react-hot-toast";
+import {
+  AUTH_NEXT_STORAGE_KEY,
+  isSafeInternalReturnPath,
+} from "../utils/safeReturnPath";
 import { Eye, EyeOff, ArrowRight, Layers } from "lucide-react";
 
 // No imports from authService — component knows nothing about the service layer
@@ -52,6 +57,7 @@ interface FormState {
 export default function Auth() {
   // Component only knows about context actions — not services, not tokens
   const { login, register, loginWithGoogle } = useAuth();
+  const [searchParams] = useSearchParams();
 
   const [mode, setMode] = useState<Mode>("login");
   const [slide, setSlide] = useState(0);
@@ -207,7 +213,16 @@ export default function Auth() {
 
           {/* Component calls context action, not the service directly */}
           <button
-            onClick={loginWithGoogle}
+            type="button"
+            onClick={() => {
+              const next = searchParams.get("next");
+              if (isSafeInternalReturnPath(next)) {
+                sessionStorage.setItem(AUTH_NEXT_STORAGE_KEY, next);
+              } else {
+                sessionStorage.removeItem(AUTH_NEXT_STORAGE_KEY);
+              }
+              loginWithGoogle();
+            }}
             className="w-full flex items-center justify-center gap-2.5 border border-gray-300 dark:border-zinc-700 rounded-lg py-2.5 text-sm text-gray-700 dark:text-zinc-200 hover:bg-gray-50 dark:hover:bg-zinc-800 transition font-medium"
           >
             <GoogleIcon />

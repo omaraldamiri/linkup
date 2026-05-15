@@ -32,7 +32,7 @@ public class GlobalExceptionHandler {
     }
     @ExceptionHandler(UnAuthorizedException.class)
     public ResponseEntity<String> handleUnAuthorizedException(UnAuthorizedException e){
-        return ResponseEntity.status(401).body(e.getMessage());
+        return ResponseEntity.status(403).body(e.getMessage());
     }
     @ExceptionHandler(UserAlreadyExistsInWorkspace.class)
     public ResponseEntity<String> handleUserAlreadyExistsInWorkspaceException(UserAlreadyExistsInWorkspace e){
@@ -40,6 +40,22 @@ public class GlobalExceptionHandler {
     }
     @ExceptionHandler(UserAlreadyHasRoleException.class)
     public ResponseEntity<String> handleUserAlreadyHasRoleException(UserAlreadyHasRoleException e){
+        return ResponseEntity.status(400).body(e.getMessage());
+    }
+    @ExceptionHandler(BadInvitationTokenException.class)
+    public ResponseEntity<String> handleBadInvitationToken(BadInvitationTokenException e) {
+        return ResponseEntity.status(400).body(e.getMessage());
+    }
+    @ExceptionHandler(InvitationExpiredException.class)
+    public ResponseEntity<String> handleInvitationExpired(InvitationExpiredException e) {
+        return ResponseEntity.status(400).body(e.getMessage());
+    }
+    @ExceptionHandler(InvitationForbiddenException.class)
+    public ResponseEntity<String> handleInvitationForbidden(InvitationForbiddenException e) {
+        return ResponseEntity.status(403).body(e.getMessage());
+    }
+    @ExceptionHandler(AdminSelfActionException.class)
+    public ResponseEntity<String> handleAdminSelfAction(AdminSelfActionException e) {
         return ResponseEntity.status(400).body(e.getMessage());
     }
     @ExceptionHandler(RuntimeException.class)
